@@ -16,6 +16,7 @@ import {
 	matchesTrustedBrasovKeyword,
 	confirmCaNoticeCounty,
 	confirmDaCounty,
+	checkNearThreshold,
 } from "./client.js";
 import { upsertTenders, getNewTenders, logRun } from "../db/operations.js";
 
@@ -122,6 +123,14 @@ export async function fetchBrasovTenders(
 				: await confirmDaCounty(raw.directAcquisitionId, config.seapCounty);
 			if (confirmed !== false) {
 				tender.county = config.seapCounty;
+				// Contract-splitting red flag: value suspiciously close to the
+				// direct-acquisition threshold. Cheap in the common case —
+				// only fetches DA detail when the value is already in a
+				// candidate window (see checkNearThreshold).
+				tender.nearThreshold = await checkNearThreshold(
+					raw.directAcquisitionId,
+					tender.valueRon,
+				);
 				allTenders.push(tender);
 			}
 		}

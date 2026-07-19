@@ -30,7 +30,8 @@ const SCHEMA_SQL = [
     type             TEXT,
     first_seen_at    TEXT NOT NULL DEFAULT (datetime('now')),
     last_updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    alerted          INTEGER NOT NULL DEFAULT 0
+    alerted          INTEGER NOT NULL DEFAULT 0,
+    near_threshold   INTEGER NOT NULL DEFAULT 0
   )`,
   `CREATE TABLE IF NOT EXISTS run_log (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,8 +70,23 @@ export function initDatabase(dbPath: string, logger: Logger): DbType {
     db.exec(sql);
   }
 
+  migrate(db, logger);
+
   logger.info(`Database initialised: ${dbPath}`);
   return db;
+}
+
+/**
+ * SQLite has no "ADD COLUMN IF NOT EXISTS", so CREATE TABLE IF NOT EXISTS
+ * alone won't add new columns to a table that already existed before them.
+ * Check for and add any missing columns here.
+ */
+function migrate(db: DbType, logger: Logger): void {
+  const columns = db.prepare('PRAGMA table_info(tenders)').all() as Array<{ name: string }>;
+  if (!columns.some((c) => c.name === 'near_threshold')) {
+    db.exec('ALTER TABLE tenders ADD COLUMN near_threshold INTEGER NOT NULL DEFAULT 0');
+    logger.info('Migrated tenders table: added near_threshold column');
+  }
 }
 
 /** Close the database connection. */

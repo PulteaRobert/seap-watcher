@@ -93,6 +93,21 @@ describe("formatWhatsAppMessage", () => {
 		const msg = formatWhatsAppMessage([], "morning");
 		expect(msg).toContain("Total: 0 licitații noi");
 	});
+
+	it("flags near-threshold tenders with a warning marker", () => {
+		const tender = makeTender({ sicapId: "DA555555", nearThreshold: true });
+		const msg = formatWhatsAppMessage([tender], "morning");
+
+		expect(msg).toContain("⚠️");
+		expect(msg).toContain("Aproape de pragul de achiziție directă");
+	});
+
+	it("does not show the near-threshold warning for regular tenders", () => {
+		const tender = makeTender({ sicapId: "DA555555", nearThreshold: false });
+		const msg = formatWhatsAppMessage([tender], "morning");
+
+		expect(msg).not.toContain("Aproape de pragul");
+	});
 });
 
 describe("formatNoNewTendersMessage", () => {

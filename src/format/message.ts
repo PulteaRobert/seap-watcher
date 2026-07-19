@@ -69,7 +69,8 @@ function slotLabel(slot: RunSlot): string {
 function formatTenderEntry(index: number, t: SeapTender): string {
 	const lines: string[] = [];
 
-	lines.push(`${index}. [${t.sicapId}] ${t.title}`);
+	const marker = t.nearThreshold ? " ⚠️" : "";
+	lines.push(`${index}. [${t.sicapId}] ${t.title}${marker}`);
 	lines.push(`   Autoritate: ${t.authorityName}`);
 	lines.push(`   Valoare: ${formatValue(t.valueRon)}`);
 
@@ -78,6 +79,12 @@ function formatTenderEntry(index: number, t: SeapTender): string {
 
 	if (t.deadline) {
 		lines.push(`   Termen: ${t.deadline}`);
+	}
+
+	if (t.nearThreshold) {
+		lines.push(
+			"   ⚠️ Aproape de pragul de achiziție directă — posibilă divizare a contractului",
+		);
 	}
 
 	lines.push(`   Link: ${t.url}`);

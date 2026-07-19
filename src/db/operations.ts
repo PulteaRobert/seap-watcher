@@ -17,8 +17,8 @@ export function upsertTender(db: Database, tender: SeapTender): void {
     INSERT INTO tenders (
       sicap_id, tier, title, authority_name, authority_cui,
       county, cpv_code, cpv_label, value_ron, publication_date,
-      state, url, deadline, type, alerted
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+      state, url, deadline, type, alerted, near_threshold
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
     ON CONFLICT(sicap_id) DO UPDATE SET
       tier             = excluded.tier,
       title            = excluded.title,
@@ -33,6 +33,7 @@ export function upsertTender(db: Database, tender: SeapTender): void {
       url              = excluded.url,
       deadline         = excluded.deadline,
       type             = excluded.type,
+      near_threshold   = excluded.near_threshold,
       last_updated_at  = datetime('now')
   `);
 
@@ -51,6 +52,7 @@ export function upsertTender(db: Database, tender: SeapTender): void {
     tender.url,
     tender.deadline ?? null,
     tender.type,
+    tender.nearThreshold ? 1 : 0,
   );
 }
 
@@ -74,19 +76,29 @@ export function hasTender(db: Database, sicapId: string): boolean {
   return result.count > 0;
 }
 
+/** Convert the raw 0/1 near_threshold column into a real boolean. */
+function withNearThresholdBoolean(
+  row: SeapTender & { nearThreshold: unknown },
+): SeapTender {
+  return { ...row, nearThreshold: !!row.nearThreshold };
+}
+
 /** Get all tenders that have not yet been alerted. */
 export function getNewTenders(db: Database): SeapTender[] {
   const stmt = db.prepare(`
     SELECT sicap_id as sicapId, tier, title, authority_name as authorityName,
            authority_cui as authorityCui, county, cpv_code as cpvCode,
            cpv_label as cpvLabel, value_ron as valueRon,
-           publication_date as publicationDate, state, url, deadline, type
+           publication_date as publicationDate, state, url, deadline, type,
+           near_threshold as nearThreshold
     FROM tenders
     WHERE alerted = 0
     ORDER BY publication_date DESC
   `);
 
-  return stmt.all() as SeapTender[];
+  return (stmt.all() as (SeapTender & { nearThreshold: unknown })[]).map(
+    withNearThresholdBoolean,
+  );
 }
 
 /** Get new tenders since a specific date. */
@@ -95,13 +107,16 @@ export function getNewTendersSince(db: Database, sinceDate: string): SeapTender[
     SELECT sicap_id as sicapId, tier, title, authority_name as authorityName,
            authority_cui as authorityCui, county, cpv_code as cpvCode,
            cpv_label as cpvLabel, value_ron as valueRon,
-           publication_date as publicationDate, state, url, deadline, type
+           publication_date as publicationDate, state, url, deadline, type,
+           near_threshold as nearThreshold
     FROM tenders
     WHERE alerted = 0 AND publication_date >= ?
     ORDER BY publication_date DESC
   `);
 
-  return stmt.all(sinceDate) as SeapTender[];
+  return (stmt.all(sinceDate) as (SeapTender & { nearThreshold: unknown })[]).map(
+    withNearThresholdBoolean,
+  );
 }
 
 /** Mark tenders as alerted (set alerted = 1). */

@@ -617,3 +617,76 @@ export async function confirmDaCounty(
   if (entityCounty === null) return null;
   return normalizeCounty(entityCounty) === normalizeCounty(county);
 }
+
+/* ------------------------------------------------------------------ */
+/*  Near-threshold detection (contract-splitting red flag)             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Romanian direct-acquisition value thresholds (RON, without VAT) — above
+ * these, a contract must go through the full above-threshold procedure
+ * instead of a simple direct acquisition. "Lucrari" (works) uses the same
+ * figure as "Servicii" since no separate works threshold was provided.
+ */
+const DIRECT_ACQUISITION_THRESHOLDS: Record<string, number> = {
+  Furnizare: 270_120,
+  Servicii: 900_400,
+  Lucrari: 900_400,
+};
+
+/** How far below the threshold still counts as "just under" (10%). */
+const NEAR_THRESHOLD_MARGIN = 0.1;
+
+/**
+ * True if `valueRon` sits within NEAR_THRESHOLD_MARGIN below the
+ * direct-acquisition threshold for `contractType` — a common signal of
+ * contract splitting to dodge the more rigorous above-threshold procedure.
+ */
+export function isNearThreshold(
+  valueRon: number | undefined,
+  contractType: string | undefined,
+): boolean {
+  if (!valueRon || !contractType) return false;
+  const threshold = DIRECT_ACQUISITION_THRESHOLDS[contractType];
+  if (!threshold) return false;
+  const lowerBound = threshold * (1 - NEAR_THRESHOLD_MARGIN);
+  return valueRon >= lowerBound && valueRon <= threshold;
+}
+
+async function getDaContractType(directAcquisitionId: number): Promise<string | null> {
+  try {
+    const detail = await fetchWithRetry(() =>
+      fetchJson<{ sysAcquisitionContractType?: { text: string } | null }>(
+        `${BASE}/api-pub/PublicDirectAcquisition/getView/${directAcquisitionId}`,
+      ),
+    );
+    return detail.sysAcquisitionContractType?.text ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check whether a direct-acquisition tender is near-threshold (see
+ * isNearThreshold). Only fetches the DA detail (for the real contract type
+ * — the list endpoint doesn't expose it) when the value already falls
+ * within a candidate window for *some* threshold, to avoid an extra
+ * network call for the common case of a tender nowhere close to either.
+ */
+export async function checkNearThreshold(
+  directAcquisitionId: number,
+  valueRon: number | undefined,
+): Promise<boolean> {
+  if (!valueRon) return false;
+
+  const inAnyCandidateWindow = Object.values(DIRECT_ACQUISITION_THRESHOLDS).some(
+    (threshold) => {
+      const lowerBound = threshold * (1 - NEAR_THRESHOLD_MARGIN);
+      return valueRon >= lowerBound && valueRon <= threshold;
+    },
+  );
+  if (!inAnyCandidateWindow) return false;
+
+  const contractType = await getDaContractType(directAcquisitionId);
+  return isNearThreshold(valueRon, contractType ?? undefined);
+}

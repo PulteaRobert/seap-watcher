@@ -57,7 +57,8 @@ function createInMemoryDb() {
       type TEXT,
       first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
       last_updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      alerted INTEGER NOT NULL DEFAULT 0
+      alerted INTEGER NOT NULL DEFAULT 0,
+      near_threshold INTEGER NOT NULL DEFAULT 0
     )`,
     `CREATE TABLE IF NOT EXISTS run_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -203,6 +204,22 @@ describe('Database operations', () => {
     it('returns empty array when no tenders exist', () => {
       const newTenders = getNewTenders(db);
       expect(newTenders).toHaveLength(0);
+    });
+
+    it('round-trips nearThreshold as a real boolean', () => {
+      upsertTender(db, { ...FIXTURE_TENDER, nearThreshold: true });
+      upsertTender(db, {
+        ...FIXTURE_TENDER,
+        sicapId: 'CN1090827',
+        nearThreshold: false,
+      });
+
+      const newTenders = getNewTenders(db);
+      const flagged = newTenders.find((t) => t.sicapId === 'SCN1175406');
+      const notFlagged = newTenders.find((t) => t.sicapId === 'CN1090827');
+
+      expect(flagged?.nearThreshold).toBe(true);
+      expect(notFlagged?.nearThreshold).toBe(false);
     });
   });
 

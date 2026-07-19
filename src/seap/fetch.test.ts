@@ -21,6 +21,7 @@ const mockIsBrasovTender = vi.fn();
 const mockMatchesTrustedBrasovKeyword = vi.fn();
 const mockConfirmCaNoticeCounty = vi.fn();
 const mockConfirmDaCounty = vi.fn();
+const mockCheckNearThreshold = vi.fn();
 const mockUpsertTenders = vi.fn();
 const mockGetNewTenders = vi.fn();
 const mockLogRun = vi.fn();
@@ -39,6 +40,7 @@ vi.mock("./client.js", () => ({
 	confirmCaNoticeCounty: (...args: unknown[]) =>
 		mockConfirmCaNoticeCounty(...args),
 	confirmDaCounty: (...args: unknown[]) => mockConfirmDaCounty(...args),
+	checkNearThreshold: (...args: unknown[]) => mockCheckNearThreshold(...args),
 }));
 
 vi.mock("../db/operations.js", () => ({
@@ -132,6 +134,7 @@ function resetMocks() {
 	mockMatchesTrustedBrasovKeyword.mockReset();
 	mockConfirmCaNoticeCounty.mockReset();
 	mockConfirmDaCounty.mockReset();
+	mockCheckNearThreshold.mockReset();
 	mockUpsertTenders.mockReset();
 	mockGetNewTenders.mockReset();
 	mockLogRun.mockReset();

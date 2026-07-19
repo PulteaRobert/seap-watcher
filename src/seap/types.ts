@@ -51,6 +51,15 @@ export interface SeapTender {
 
 	/** Contract type: "Furnizare", "Lucrare", "Servicii" */
 	type: string;
+
+	/**
+	 * True if a sub-threshold (DA) tender's value sits suspiciously close to
+	 * (but under) the direct-acquisition threshold for its contract type —
+	 * a common signal of contract splitting to avoid the more rigorous
+	 * above-threshold procedure. Always false/undefined for above-threshold
+	 * tenders, since they're already past any relevant threshold.
+	 */
+	nearThreshold?: boolean;
 }
 
 /** Raw SEAP API response envelope for notice list queries. */

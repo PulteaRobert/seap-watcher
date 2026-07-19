@@ -480,4 +480,62 @@ describe("SEAP client", () => {
 			expect(result).toBeNull();
 		}, 15000); // exhausts fetchWithRetry's real backoff (~7s)
 	});
+
+	describe("isNearThreshold", () => {
+		it("flags a Furnizare value within 10% below its threshold (270120)", () => {
+			expect(client.isNearThreshold(260000, "Furnizare")).toBe(true);
+			expect(client.isNearThreshold(270120, "Furnizare")).toBe(true);
+		});
+
+		it("does not flag a Furnizare value well below the threshold", () => {
+			expect(client.isNearThreshold(100000, "Furnizare")).toBe(false);
+		});
+
+		it("does not flag a value above the threshold", () => {
+			expect(client.isNearThreshold(280000, "Furnizare")).toBe(false);
+		});
+
+		it("flags a Servicii/Lucrari value within 10% below its threshold (900400)", () => {
+			expect(client.isNearThreshold(850000, "Servicii")).toBe(true);
+			expect(client.isNearThreshold(850000, "Lucrari")).toBe(true);
+		});
+
+		it("returns false for missing value or contract type", () => {
+			expect(client.isNearThreshold(undefined, "Furnizare")).toBe(false);
+			expect(client.isNearThreshold(260000, undefined)).toBe(false);
+			expect(client.isNearThreshold(260000, "Unknown")).toBe(false);
+		});
+	});
+
+	describe("checkNearThreshold", () => {
+		it("flags when the real contract type's value is near its threshold", async () => {
+			mockFetch.mockResolvedValueOnce(
+				mockJsonResponse({
+					sysAcquisitionContractType: { text: "Furnizare" },
+				}),
+			);
+
+			const result = await client.checkNearThreshold(122632563, 265000);
+			expect(result).toBe(true);
+		});
+
+		it("does not fetch DA detail when value isn't in any candidate window", async () => {
+			const result = await client.checkNearThreshold(122632563, 5000);
+			expect(result).toBe(false);
+			expect(mockFetch).not.toHaveBeenCalled();
+		});
+
+		it("rejects when the real contract type's threshold doesn't match the window", async () => {
+			// 265000 is in the Furnizare window (243108-270120), but this
+			// record is actually Servicii (threshold 900400) — not near it.
+			mockFetch.mockResolvedValueOnce(
+				mockJsonResponse({
+					sysAcquisitionContractType: { text: "Servicii" },
+				}),
+			);
+
+			const result = await client.checkNearThreshold(122632563, 265000);
+			expect(result).toBe(false);
+		});
+	});
 });
