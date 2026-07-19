@@ -3,7 +3,7 @@
  * twice daily on weekdays via node-cron.
  */
 
-import cron from "node-cron";
+import cron, { type ScheduledTask } from "node-cron";
 import type { Database } from "better-sqlite3";
 import type { Logger } from "pino";
 import type { Config } from "./config.js";
@@ -92,7 +92,7 @@ export function startScheduler(
 	whatsapp: WhatsAppClient,
 	logger: Logger,
 ): SchedulerHandle {
-	const jobs: cron.ScheduledTask[] = [];
+	const jobs: ScheduledTask[] = [];
 
 	// Morning run
 	const morningJob = cron.schedule(
