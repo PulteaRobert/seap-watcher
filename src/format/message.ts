@@ -5,8 +5,7 @@
  * with truncation indicator.
  */
 
-import type { SeapTender } from "../seap/types.js";
-import type { RunSlot } from "../scheduler.js";
+import type { SeapTender, RunSlot } from "../seap/types.js";
 
 const MAX_TENDERS_PER_MESSAGE = 20;
 

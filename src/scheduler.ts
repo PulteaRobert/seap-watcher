@@ -8,7 +8,7 @@ import type { Database } from "better-sqlite3";
 import type { Logger } from "pino";
 import type { Config } from "./config.js";
 import type { WhatsAppClient } from "./whatsapp/types.js";
-import type { SeapTender } from "./seap/types.js";
+import type { SeapTender, RunSlot } from "./seap/types.js";
 import { fetchBrasovTenders } from "./seap/fetch.js";
 import { markAsAlerted } from "./db/operations.js";
 import { formatWhatsAppMessage } from "./format/message.js";
@@ -22,8 +22,6 @@ import { sendWithRetry } from "./whatsapp/send.js";
  * Execute one scheduled check: fetch tenders, send WhatsApp alert
  * for new ones, and mark them as alerted.
  */
-export type RunSlot = "morning" | "afternoon" | "manual";
-
 /**
  * Execute one scheduled check: fetch tenders, send WhatsApp alert
  * for new ones, and mark them as alerted.

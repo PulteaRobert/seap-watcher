@@ -6,8 +6,7 @@
 import type { Database } from "better-sqlite3";
 import type { Config } from "../config.js";
 import type { Logger } from "pino";
-import type { SeapTender, RunLog } from "./types.js";
-import type { RunSlot } from "../scheduler.js";
+import type { SeapTender, RunLog, RunSlot } from "./types.js";
 import {
 	searchAboveThresholdTenders,
 	searchSubThresholdTenders,

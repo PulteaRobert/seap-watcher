@@ -5,6 +5,9 @@
  * n8n-nodes-seap and the live API at https://e-licitatie.ro/api-pub/
  */
 
+/** Cron slot label used by the scheduler and fetch pipeline. */
+export type RunSlot = "morning" | "afternoon" | "manual";
+
 /** A single tender notice from SEAP, normalised for our storage. */
 export interface SeapTender {
   /** Unique SEAP notice number, e.g. "SCN1175406", "CN1090827" */
