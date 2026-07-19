@@ -13,6 +13,9 @@ import {
 	mapTender,
 	mapDirectAcquisition,
 	isBrasovTender,
+	matchesTrustedBrasovKeyword,
+	confirmCaNoticeCounty,
+	confirmDaCounty,
 } from "./client.js";
 import { upsertTenders, getNewTenders, logRun } from "../db/operations.js";
 
@@ -88,9 +91,23 @@ export async function fetchBrasovTenders(
 		// 3. Map and filter by Brasov county
 		const allTenders: SeapTender[] = [];
 
+		// An explicit "Brasov"/"Brașov" mention is trusted directly — that also
+		// covers national agencies awarding contracts for local Brasov projects
+		// (e.g. CNAIR notices titled "D.R.D.P. Brasov"), where the authority
+		// itself isn't registered in Brasov county. A match on an individual
+		// town/comuna name alone is confirmed against the authority's real
+		// registered county first, since several of those names collide with
+		// same-named localities in other counties. Only runs on the small
+		// already-filtered set, not every raw result, and fails open (keeps
+		// the tender) if the confirmation lookup itself fails.
 		for (const raw of aboveResult.items) {
 			const tender = mapTender(raw, "above_threshold");
-			if (isBrasovTender(tender)) {
+			if (!isBrasovTender(tender)) continue;
+
+			const confirmed = matchesTrustedBrasovKeyword(tender)
+				? true
+				: await confirmCaNoticeCounty(raw.caNoticeId, config.seapCounty);
+			if (confirmed !== false) {
 				tender.county = config.seapCounty;
 				allTenders.push(tender);
 			}
@@ -98,7 +115,12 @@ export async function fetchBrasovTenders(
 
 		for (const raw of subResult.items) {
 			const tender = mapDirectAcquisition(raw);
-			if (isBrasovTender(tender)) {
+			if (!isBrasovTender(tender)) continue;
+
+			const confirmed = matchesTrustedBrasovKeyword(tender)
+				? true
+				: await confirmDaCounty(raw.directAcquisitionId, config.seapCounty);
+			if (confirmed !== false) {
 				tender.county = config.seapCounty;
 				allTenders.push(tender);
 			}

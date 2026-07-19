@@ -62,7 +62,7 @@ export interface SeapNoticeResponse {
 
 /** A single raw notice item from the SEAP API. */
 export interface SeapRawNotice {
-	cNoticeId: number;
+	caNoticeId: number;
 	noticeId: number;
 	procedureId: number;
 	noticeNo: string;

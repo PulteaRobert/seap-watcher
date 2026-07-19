@@ -32,7 +32,7 @@ const FIXTURE_NOTICE_RESPONSE = {
 	total: 3,
 	items: [
 		{
-			cNoticeId: 100239953,
+			caNoticeId: 100239953,
 			noticeId: 101347480,
 			procedureId: 100323296,
 			noticeNo: "SCN1175406",
@@ -58,7 +58,7 @@ const FIXTURE_NOTICE_RESPONSE = {
 			estimatedValueExport: "220254,3 RON",
 		},
 		{
-			cNoticeId: 100206019,
+			caNoticeId: 100206019,
 			noticeId: 101323448,
 			procedureId: 100319361,
 			noticeNo: "CN1090827",
@@ -84,7 +84,7 @@ const FIXTURE_NOTICE_RESPONSE = {
 			estimatedValueExport: "98347107,44 RON",
 		},
 		{
-			cNoticeId: 100205890,
+			caNoticeId: 100205890,
 			noticeId: 101321902,
 			procedureId: 100319152,
 			noticeNo: "CN1090700",
@@ -151,7 +151,7 @@ describe("SEAP client", () => {
 
 		it("handles missing optional fields gracefully", () => {
 			const raw: SeapRawNotice = {
-				cNoticeId: 0,
+				caNoticeId: 0,
 				noticeId: 0,
 				procedureId: 0,
 				noticeNo: "TEST001",
@@ -414,5 +414,70 @@ describe("SEAP client", () => {
 			const result = await client.searchCpvs("nonexistent-cpv", 10);
 			expect(result).toHaveLength(0);
 		});
+	});
+
+	describe("confirmCaNoticeCounty", () => {
+		it("returns true when the entity's county matches (diacritic/case-insensitive)", async () => {
+			mockFetch
+				.mockResolvedValueOnce(mockJsonResponse({ entityId: 6284 }))
+				.mockResolvedValueOnce(mockJsonResponse({ county: "Brașov" }));
+
+			const result = await client.confirmCaNoticeCounty(100643523, "Brasov");
+			expect(result).toBe(true);
+		});
+
+		it("returns false when the entity's county doesn't match", async () => {
+			mockFetch
+				.mockResolvedValueOnce(mockJsonResponse({ entityId: 6284 }))
+				.mockResolvedValueOnce(mockJsonResponse({ county: "Braila" }));
+
+			const result = await client.confirmCaNoticeCounty(100643523, "Brasov");
+			expect(result).toBe(false);
+		});
+
+		it("returns null (fail open) when the notice detail lookup fails", async () => {
+			mockFetch.mockRejectedValue(new Error("network error"));
+
+			const result = await client.confirmCaNoticeCounty(100643523, "Brasov");
+			expect(result).toBeNull();
+		}, 15000); // exhausts fetchWithRetry's real backoff (~7s)
+
+		it("returns null (fail open) when entityId is missing", async () => {
+			mockFetch.mockResolvedValueOnce(mockJsonResponse({ entityId: null }));
+
+			const result = await client.confirmCaNoticeCounty(100643523, "Brasov");
+			expect(result).toBeNull();
+		});
+	});
+
+	describe("confirmDaCounty", () => {
+		it("returns true when the authority's county matches", async () => {
+			mockFetch
+				.mockResolvedValueOnce(
+					mockJsonResponse({ contractingAuthorityID: 9193 }),
+				)
+				.mockResolvedValueOnce(mockJsonResponse({ county: "Brasov" }));
+
+			const result = await client.confirmDaCounty(103063481, "Brasov");
+			expect(result).toBe(true);
+		});
+
+		it("returns false when the authority's county doesn't match", async () => {
+			mockFetch
+				.mockResolvedValueOnce(
+					mockJsonResponse({ contractingAuthorityID: 9193 }),
+				)
+				.mockResolvedValueOnce(mockJsonResponse({ county: "Arges" }));
+
+			const result = await client.confirmDaCounty(103063481, "Brasov");
+			expect(result).toBe(false);
+		});
+
+		it("returns null (fail open) when the DA detail lookup fails", async () => {
+			mockFetch.mockRejectedValue(new Error("network error"));
+
+			const result = await client.confirmDaCounty(103063481, "Brasov");
+			expect(result).toBeNull();
+		}, 15000); // exhausts fetchWithRetry's real backoff (~7s)
 	});
 });

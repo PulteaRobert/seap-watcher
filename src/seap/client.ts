@@ -11,9 +11,20 @@
  * startPublicationDate/endPublicationDate server-side.
  *
  * Endpoints:
- *   GET  /api-pub/ComboPub/searchCpvs                          — CPV autocomplete
- *   POST /api-pub/NoticeCommon/GetCANoticeList/                 — above-threshold tender search (CAN)
+ *   GET  /api-pub/ComboPub/searchCpvs                              — CPV autocomplete
+ *   POST /api-pub/NoticeCommon/GetCANoticeList/                     — above-threshold tender search (CAN)
  *   POST /api-pub/DirectAcquisitionCommon/GetDirectAcquisitionList/ — sub-threshold tender search (DA)
+ *   GET  /api-pub/C_PUBLIC_CANotice/get/{caNoticeId}                — CA notice detail (has entityId)
+ *   GET  /api-pub/PublicDirectAcquisition/getView/{id}               — DA detail (has contractingAuthorityID)
+ *   GET  /api-pub/Entity/getCAEntityView/{entityId}                  — authority detail, incl. real county
+ *
+ * The search endpoints have no county filter, so county membership is
+ * matched by keyword against authority name/title (see isBrasovTender).
+ * That's fast but can false-positive on same-named localities/facilities
+ * in other counties. confirmCaNoticeCounty/confirmDaCounty do an
+ * authoritative 2-hop lookup (notice/DA detail -> entity view -> real
+ * registered county) — cheap to run only on the small set of tenders that
+ * already passed the keyword filter, not on every raw result.
  */
 
 import type {
@@ -78,8 +89,8 @@ export function mapTender(raw: SeapRawNotice, tier: SeapTender['tier']): SeapTen
     valueRon: raw.estimatedValueRon ?? undefined,
     publicationDate: raw.noticeStateDate,
     state: raw.sysNoticeState?.text ?? '',
-    url: raw.cNoticeId
-      ? `${BASE}/pub/notices/c-notice/v2/view/${raw.cNoticeId}`
+    url: raw.caNoticeId
+      ? `${BASE}/pub/notices/ca-notices/view-c/${raw.caNoticeId}`
       : `${BASE}/pub/notices/contract-notices/list/0/0`,
     deadline: raw.minTenderReceiptDeadline ?? undefined,
     type: raw.sysAcquisitionContractType?.text ?? '',
@@ -346,25 +357,15 @@ export async function searchSubThresholdTenders(
 /* ------------------------------------------------------------------ */
 
 /**
- * Brasov county authority keywords for client-side filtering.
- * SEAP does not expose a county filter in its public API, so we filter by
- * matching known Brasov county administrative unit names (the 4 municipii,
- * 6 orașe, and comune) plus common authority-name patterns. Deliberately
- * scoped to Brasov county only — do not add place names from other
- * counties, even ones that sound similar or are geographically close.
- *
- * Matching is whole-word (see containsWholeWord below), so short names no
- * longer collide with unrelated words containing them as a substring
- * ("bran" no longer matches inside "membrană", "vulcan" no longer matches
- * inside "vulcanizare", etc.). That does NOT protect against a handful of
- * these being the exact same word as a real locality/name elsewhere in
- * Romania — "victoria" (also Brăila), "vulcan" (also a Hunedoara city),
- * "comana" (also Giurgiu), "cristian"/"beclean" (also a common first name /
- * a Bistrița-Năsăud town) — those are included anyway for recall; expect
- * an occasional false positive from one of those exact collisions.
+ * "Brasov"/"Brașov" itself and authority-name phrases built from it. There's
+ * no other Romanian locality with this exact name, so a match here is
+ * trusted directly — notably this covers national agencies awarding
+ * contracts for local Brasov projects (e.g. CNAIR notices whose authority
+ * is nationally registered but whose title says "D.R.D.P. Brasov"), which
+ * a per-authority county lookup would incorrectly reject since the awarding
+ * entity itself isn't registered in Brasov county.
  */
-const BRASOV_KEYWORDS = [
-  // Authority-name patterns
+const TRUSTED_KEYWORDS = [
   'brașov',
   'brasov',
   'bj brasov',
@@ -378,6 +379,27 @@ const BRASOV_KEYWORDS = [
   'municipiul brasov',
   'orașul brasov',
   'comuna brasov',
+];
+
+/**
+ * Individual Brasov county administrative unit names (the 4 municipii minus
+ * Brasov itself, 6 orașe, and comune). Unlike TRUSTED_KEYWORDS, several of
+ * these are the exact same word as a real locality/name elsewhere in
+ * Romania — "victoria" (also Brăila), "zarnesti" (also a Buzău commune),
+ * "voila" (also a street name in Prahova), "vulcan" (also a Hunedoara
+ * city), "comana" (also Giurgiu), "cristian"/"beclean" (also a common first
+ * name / a Bistrița-Năsăud town) — all confirmed via live data, not
+ * hypothetical. Matches against this list should be confirmed against the
+ * authority's actual registered county (see confirmCaNoticeCounty /
+ * confirmDaCounty) before being trusted, unlike TRUSTED_KEYWORDS matches.
+ *
+ * Matching is whole-word (see containsWholeWord below), so short names
+ * don't collide with unrelated words containing them as a substring
+ * ("bran" doesn't match inside "membrană", "vulcan" doesn't match inside
+ * "vulcanizare", etc.) — but that's a separate concern from the
+ * same-name-different-county collisions above.
+ */
+const AMBIGUOUS_KEYWORDS = [
   // Municipii
   'codlea',
   'fagaras',
@@ -467,12 +489,8 @@ const BRASOV_KEYWORDS = [
   'șoarș',
 ];
 
-/**
- * Check if a tender is from Brasov county by examining the authority name
- * and other available fields.
- */
-export function isBrasovTender(tender: SeapTender | SeapRawNotice): boolean {
-  const text = [
+function tenderText(tender: SeapTender | SeapRawNotice): string {
+  return [
     (tender as any).authorityName ?? '',
     (tender as any).contractingAuthorityNameAndFN ?? '',
     (tender as any).county ?? '',
@@ -480,8 +498,30 @@ export function isBrasovTender(tender: SeapTender | SeapRawNotice): boolean {
   ]
     .join(' ')
     .toLowerCase();
+}
 
-  return BRASOV_KEYWORDS.some((kw) => containsWholeWord(text, kw));
+/**
+ * Check if a tender is from Brasov county by examining the authority name
+ * and other available fields.
+ */
+export function isBrasovTender(tender: SeapTender | SeapRawNotice): boolean {
+  const text = tenderText(tender);
+  return [...TRUSTED_KEYWORDS, ...AMBIGUOUS_KEYWORDS].some((kw) =>
+    containsWholeWord(text, kw),
+  );
+}
+
+/**
+ * True if the tender matched via an unambiguous "Brasov"/"Brașov" mention
+ * (see TRUSTED_KEYWORDS) rather than only via an individual town/comuna
+ * name. Callers should skip the county-confirmation lookup when this is
+ * true — see the comment on TRUSTED_KEYWORDS for why.
+ */
+export function matchesTrustedBrasovKeyword(
+  tender: SeapTender | SeapRawNotice,
+): boolean {
+  const text = tenderText(tender);
+  return TRUSTED_KEYWORDS.some((kw) => containsWholeWord(text, kw));
 }
 
 /**
@@ -495,4 +535,85 @@ function containsWholeWord(text: string, keyword: string): boolean {
   const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const pattern = new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'iu');
   return pattern.test(text);
+}
+
+/* ------------------------------------------------------------------ */
+/*  County confirmation (authoritative, via authority lookup)          */
+/* ------------------------------------------------------------------ */
+
+function normalizeCounty(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+async function getEntityIdFromCaNotice(caNoticeId: number): Promise<number | null> {
+  try {
+    const detail = await fetchWithRetry(() =>
+      fetchJson<{ entityId: number | null }>(`${BASE}/api-pub/C_PUBLIC_CANotice/get/${caNoticeId}`),
+    );
+    return detail.entityId ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function getEntityIdFromDa(directAcquisitionId: number): Promise<number | null> {
+  try {
+    const detail = await fetchWithRetry(() =>
+      fetchJson<{ contractingAuthorityID: number | null }>(
+        `${BASE}/api-pub/PublicDirectAcquisition/getView/${directAcquisitionId}`,
+      ),
+    );
+    return detail.contractingAuthorityID ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function getEntityCounty(entityId: number): Promise<string | null> {
+  try {
+    const view = await fetchWithRetry(() =>
+      fetchJson<{ county: string | null }>(`${BASE}/api-pub/Entity/getCAEntityView/${entityId}`),
+    );
+    return view.county ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Authoritatively confirm whether a CA (above-threshold) notice's
+ * contracting authority is registered in `county`, via a 2-hop lookup
+ * (notice detail -> entity view -> real county). Meant as a confirmation
+ * pass on top of isBrasovTender's keyword match, not a replacement — it's
+ * two extra HTTP calls, so only run it on tenders that already matched.
+ *
+ * Returns `null` (not `false`) if either lookup fails, so callers can fail
+ * open and keep the keyword match rather than silently dropping a possibly
+ * genuine tender because of a transient network error.
+ */
+export async function confirmCaNoticeCounty(
+  caNoticeId: number,
+  county: string,
+): Promise<boolean | null> {
+  const entityId = await getEntityIdFromCaNotice(caNoticeId);
+  if (entityId === null) return null;
+  const entityCounty = await getEntityCounty(entityId);
+  if (entityCounty === null) return null;
+  return normalizeCounty(entityCounty) === normalizeCounty(county);
+}
+
+/** Same as {@link confirmCaNoticeCounty}, but for direct-acquisition (DA) records. */
+export async function confirmDaCounty(
+  directAcquisitionId: number,
+  county: string,
+): Promise<boolean | null> {
+  const entityId = await getEntityIdFromDa(directAcquisitionId);
+  if (entityId === null) return null;
+  const entityCounty = await getEntityCounty(entityId);
+  if (entityCounty === null) return null;
+  return normalizeCounty(entityCounty) === normalizeCounty(county);
 }

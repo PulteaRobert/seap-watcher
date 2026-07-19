@@ -18,6 +18,9 @@ const mockSearchSubThreshold = vi.fn();
 const mockMapTender = vi.fn();
 const mockMapDirectAcquisition = vi.fn();
 const mockIsBrasovTender = vi.fn();
+const mockMatchesTrustedBrasovKeyword = vi.fn();
+const mockConfirmCaNoticeCounty = vi.fn();
+const mockConfirmDaCounty = vi.fn();
 const mockUpsertTenders = vi.fn();
 const mockGetNewTenders = vi.fn();
 const mockLogRun = vi.fn();
@@ -31,6 +34,11 @@ vi.mock("./client.js", () => ({
 	mapDirectAcquisition: (...args: unknown[]) =>
 		mockMapDirectAcquisition(...args),
 	isBrasovTender: (...args: unknown[]) => mockIsBrasovTender(...args),
+	matchesTrustedBrasovKeyword: (...args: unknown[]) =>
+		mockMatchesTrustedBrasovKeyword(...args),
+	confirmCaNoticeCounty: (...args: unknown[]) =>
+		mockConfirmCaNoticeCounty(...args),
+	confirmDaCounty: (...args: unknown[]) => mockConfirmDaCounty(...args),
 }));
 
 vi.mock("../db/operations.js", () => ({
@@ -78,7 +86,7 @@ const mockLogger: Logger = {
 } as any;
 
 const fixtureRawNotice = {
-	cNoticeId: 100239953,
+	caNoticeId: 100239953,
 	noticeId: 101347480,
 	procedureId: 100323296,
 	noticeNo: "SCN1175406",
@@ -121,6 +129,9 @@ function resetMocks() {
 	mockMapTender.mockReset();
 	mockMapDirectAcquisition.mockReset();
 	mockIsBrasovTender.mockReset();
+	mockMatchesTrustedBrasovKeyword.mockReset();
+	mockConfirmCaNoticeCounty.mockReset();
+	mockConfirmDaCounty.mockReset();
 	mockUpsertTenders.mockReset();
 	mockGetNewTenders.mockReset();
 	mockLogRun.mockReset();
@@ -382,6 +393,52 @@ describe("fetchBrasovTenders", () => {
 			]),
 		);
 		expect((mockUpsertTenders.mock.calls[0] as unknown[])[1]).toHaveLength(2);
+	});
+
+	it("drops a keyword match when county confirmation explicitly rejects it", async () => {
+		mockSearchAboveThreshold.mockResolvedValueOnce({
+			items: [fixtureRawNotice],
+			total: 1,
+			searchTooLong: false,
+		});
+		mockSearchSubThreshold.mockResolvedValueOnce({
+			items: [],
+			total: 0,
+			searchTooLong: false,
+		});
+		mockMapTender.mockReturnValue(fixtureMappedTender);
+		mockIsBrasovTender.mockReturnValue(true);
+		// Keyword matched, but the authoritative lookup says it's NOT Brasov
+		mockConfirmCaNoticeCounty.mockResolvedValueOnce(false);
+		mockGetNewTenders.mockReturnValueOnce([]);
+
+		await fetchBrasovTenders(mockConfig, mockDb, mockLogger);
+
+		expect(mockUpsertTenders).not.toHaveBeenCalled();
+	});
+
+	it("keeps a keyword match when county confirmation can't resolve (fails open)", async () => {
+		mockSearchAboveThreshold.mockResolvedValueOnce({
+			items: [fixtureRawNotice],
+			total: 1,
+			searchTooLong: false,
+		});
+		mockSearchSubThreshold.mockResolvedValueOnce({
+			items: [],
+			total: 0,
+			searchTooLong: false,
+		});
+		mockMapTender.mockReturnValue(fixtureMappedTender);
+		mockIsBrasovTender.mockReturnValue(true);
+		// Lookup failed (returns null) — should still keep the tender
+		mockConfirmCaNoticeCounty.mockResolvedValueOnce(null);
+		mockGetNewTenders.mockReturnValueOnce([fixtureMappedTender]);
+
+		await fetchBrasovTenders(mockConfig, mockDb, mockLogger);
+
+		expect(mockUpsertTenders).toHaveBeenCalledWith(mockDb, [
+			fixtureMappedTender,
+		]);
 	});
 
 	it("logs run even when logRun itself throws (no crash)", async () => {
