@@ -26,7 +26,11 @@ sudo git config --global --add safe.directory "$APP_DIR"
 
 info "Pulling latest changes..."
 BEFORE="$(sudo git rev-parse HEAD)"
-sudo git pull --ff-only || fail "git pull failed"
+# Fetch + hard reset rather than `pull`: the VPS checkout should always
+# mirror origin/master exactly, so any local drift (e.g. an npm install
+# run by hand on the box) never blocks an automated deploy.
+sudo git fetch origin master || fail "git fetch failed"
+sudo git reset --hard origin/master || fail "git reset failed"
 AFTER="$(sudo git rev-parse HEAD)"
 
 if [ "$BEFORE" = "$AFTER" ]; then
