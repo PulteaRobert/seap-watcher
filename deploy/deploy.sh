@@ -20,6 +20,8 @@ fail() {
 
 cd "$APP_DIR" || fail "Cannot cd to $APP_DIR"
 
+git config --global --add safe.directory "$APP_DIR"
+
 info "Pulling latest changes..."
 BEFORE="$(git rev-parse HEAD)"
 git pull --ff-only || fail "git pull failed"
