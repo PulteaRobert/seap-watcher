@@ -92,7 +92,7 @@ export interface SeapSearchResult {
 /** A run log entry tracking each scheduled fetch. */
 export interface RunLog {
   runAt: string;
-  cronSlot: 'morning' | 'afternoon';
+  cronSlot: 'morning' | 'afternoon' | 'manual';
   totalFetched: number;
   newTenders: number;
   alertedCount: number;

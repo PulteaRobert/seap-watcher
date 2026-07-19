@@ -7,6 +7,7 @@ import type { Database } from "better-sqlite3";
 import type { Config } from "../config.js";
 import type { Logger } from "pino";
 import type { SeapTender, RunLog } from "./types.js";
+import type { RunSlot } from "../scheduler.js";
 import {
 	searchAboveThresholdTenders,
 	searchSubThresholdTenders,
@@ -32,7 +33,7 @@ export async function fetchBrasovTenders(
 	config: Config,
 	db: Database,
 	logger: Logger,
-	slot: "morning" | "afternoon" = "morning",
+	slot: RunSlot = "morning",
 ): Promise<SeapTender[]> {
 	const now = new Date();
 	const windowHours = 12; // overlap safety — covers both morning and afternoon slots

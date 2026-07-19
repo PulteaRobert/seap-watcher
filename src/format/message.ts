@@ -6,6 +6,7 @@
  */
 
 import type { SeapTender } from "../seap/types.js";
+import type { RunSlot } from "../scheduler.js";
 
 const MAX_TENDERS_PER_MESSAGE = 20;
 
@@ -57,8 +58,10 @@ function formatValue(value: number | undefined): string {
 }
 
 /** Slot label in Romanian. */
-function slotLabel(slot: "morning" | "afternoon"): string {
-	return slot === "morning" ? "dimineața" : "seara";
+function slotLabel(slot: RunSlot): string {
+	if (slot === "morning") return "dimineața";
+	if (slot === "afternoon") return "seara";
+	return "manual";
 }
 
 /**
@@ -91,7 +94,7 @@ function formatTenderEntry(index: number, t: SeapTender): string {
  */
 export function formatWhatsAppMessage(
 	tenders: SeapTender[],
-	slot: "morning" | "afternoon",
+	slot: RunSlot,
 ): string {
 	const now = new Date();
 	const dateStr = formatRomanianDate(now);
@@ -125,7 +128,7 @@ export function formatWhatsAppMessage(
  * Format a "no new tenders" informational message.
  */
 export function formatNoNewTendersMessage(
-	slot: "morning" | "afternoon",
+	slot: RunSlot,
 ): string {
 	const now = new Date();
 	const dateStr = formatRomanianDate(now);
@@ -138,7 +141,7 @@ export function formatNoNewTendersMessage(
  * Format an error message when a scheduled run fails.
  */
 export function formatErrorMessage(
-	slot: "morning" | "afternoon",
+	slot: RunSlot,
 	error: string,
 ): string {
 	const now = new Date();

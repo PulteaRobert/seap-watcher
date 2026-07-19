@@ -22,8 +22,14 @@ import { sendWithRetry } from "./whatsapp/send.js";
  * Execute one scheduled check: fetch tenders, send WhatsApp alert
  * for new ones, and mark them as alerted.
  */
-async function runCheck(
-	slot: "morning" | "afternoon",
+export type RunSlot = "morning" | "afternoon" | "manual";
+
+/**
+ * Execute one scheduled check: fetch tenders, send WhatsApp alert
+ * for new ones, and mark them as alerted.
+ */
+export async function runCheck(
+	slot: RunSlot,
 	config: Config,
 	db: Database,
 	whatsapp: WhatsAppClient,

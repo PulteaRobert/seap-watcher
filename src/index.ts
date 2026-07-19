@@ -7,7 +7,7 @@
 import { loadConfig } from "./config.js";
 import { createLogger } from "./logger.js";
 import { initDatabase, closeDatabase } from "./db/database.js";
-import { startScheduler } from "./scheduler.js";
+import { startScheduler, runCheck } from "./scheduler.js";
 import { createBaileysClient } from "./whatsapp/client.js";
 import { createNoOpClient } from "./whatsapp/noop.js";
 
@@ -33,12 +33,23 @@ async function main(): Promise<void> {
 	}
 	await whatsapp.connect();
 
-	// 4. Start the scheduler
+	// 4. Check for --run-once flag (instant manual run)
+	const runOnce = process.argv.includes("--run-once");
+	if (runOnce) {
+		logger.info("Manual run triggered (--run-once)");
+		await runCheck("manual", config, db, whatsapp, logger);
+		logger.info("Manual run complete — exiting");
+		await whatsapp.close();
+		closeDatabase(db);
+		process.exit(0);
+	}
+
+	// 5. Start the scheduler
 	const scheduler = startScheduler(config, db, whatsapp, logger);
 
 	logger.info("Scheduler active. Waiting for cron triggers...");
 
-	// 5. Graceful shutdown
+	// 6. Graceful shutdown
 	const shutdown = async (signal: string) => {
 		logger.info(`${signal} received — shutting down...`);
 		scheduler.stop();
