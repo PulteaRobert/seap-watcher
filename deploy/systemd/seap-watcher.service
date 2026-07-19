@@ -10,6 +10,7 @@ WorkingDirectory=/opt/seap-watcher
 ExecStart=/usr/bin/node dist/index.js
 Restart=always
 RestartSec=10
+Environment=NODE_ENV=production
 EnvironmentFile=/opt/seap-watcher/.env
 StandardOutput=journal
 StandardError=journal

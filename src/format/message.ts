@@ -126,9 +126,7 @@ export function formatWhatsAppMessage(
 /**
  * Format a "no new tenders" informational message.
  */
-export function formatNoNewTendersMessage(
-	slot: RunSlot,
-): string {
+export function formatNoNewTendersMessage(slot: RunSlot): string {
 	const now = new Date();
 	const dateStr = formatRomanianDate(now);
 	const slotStr = slotLabel(slot);
@@ -139,10 +137,7 @@ export function formatNoNewTendersMessage(
 /**
  * Format an error message when a scheduled run fails.
  */
-export function formatErrorMessage(
-	slot: RunSlot,
-	error: string,
-): string {
+export function formatErrorMessage(slot: RunSlot, error: string): string {
 	const now = new Date();
 	const dateStr = formatRomanianDate(now);
 	const slotStr = slotLabel(slot);
