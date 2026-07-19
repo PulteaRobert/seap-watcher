@@ -1,0 +1,25 @@
+[Unit]
+Description=SEAP Brasov Tender Watcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=seap
+WorkingDirectory=/opt/seap-watcher
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=10
+EnvironmentFile=/opt/seap-watcher/.env
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=seap-watcher
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/seap-watcher/data /opt/seap-watcher/session
+
+[Install]
+WantedBy=multi-user.target
