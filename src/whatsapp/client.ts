@@ -13,6 +13,7 @@ import {
 	type SocketConfig,
 	type BaileysEventMap,
 } from "baileys";
+import qrcodeTerminal from "qrcode-terminal";
 import { readdirSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger } from "pino";
@@ -81,7 +82,6 @@ export class BaileysWhatsAppClient implements WhatsAppClient {
 		this._sock = makeWASocket({
 			version,
 			auth: state,
-			printQRInTerminal: true,
 		} as SocketConfig);
 
 		// Persist credentials updates (keeps session alive across restarts)
@@ -96,6 +96,7 @@ export class BaileysWhatsAppClient implements WhatsAppClient {
 					this._logger.info(
 						"QR code generated — scan with WhatsApp Web to authenticate",
 					);
+					qrcodeTerminal.generate(qr, { small: true });
 				}
 
 				if (connection === "close") {
