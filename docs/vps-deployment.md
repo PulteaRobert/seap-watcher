@@ -180,6 +180,8 @@ sudo journalctl -u seap-watcher -f
 
 ## Updating the Application
 
+### Manual Update
+
 ```bash
 cd /opt/seap-watcher
 
@@ -196,6 +198,45 @@ sudo systemctl restart seap-watcher
 # Verify
 sudo journalctl -u seap-watcher -n 20
 ```
+
+### Automatic Deployment via GitHub Actions
+
+Push to `master` and the VPS auto-updates. Requires one-time SSH key setup.
+
+#### 1. Generate an SSH deploy key
+
+```bash
+ssh-keygen -t ed25519 -C "gh-actions-deploy" -f ~/.ssh/seap-watcher-deploy -N ""
+```
+
+#### 2. Add public key to VPS
+
+```bash
+# Copy the public key to your VPS and add it to authorized_keys
+ssh-copy-id -i ~/.ssh/seap-watcher-deploy.pub root@YOUR_VPS_IP
+# or manually: cat ~/.ssh/seap-watcher-deploy.pub >> ~/.ssh/authorized_keys
+```
+
+#### 3. Add GitHub Secrets
+
+In your repo settings → Secrets and variables → Actions, add:
+
+| Secret | Value |
+| --- | --- |
+| `DEPLOY_HOST` | Your VPS IP or hostname |
+| `DEPLOY_USER` | SSH username (e.g. `root`) |
+| `DEPLOY_KEY` | Contents of the **private** key file |
+
+```bash
+# Copy the private key content to your clipboard
+cat ~/.ssh/seap-watcher-deploy
+```
+
+#### 4. Done
+
+Every push to `master` triggers a deploy. You can also manually trigger from the Actions tab.
+
+> **Note**: The workflow runs a local build check before deploying, so broken code never reaches the VPS.
 
 ---
 
