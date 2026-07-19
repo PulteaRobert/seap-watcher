@@ -353,17 +353,15 @@ export async function searchSubThresholdTenders(
  * scoped to Brasov county only — do not add place names from other
  * counties, even ones that sound similar or are geographically close.
  *
- * Kept short/generic-looking names out even when they're real Brasov
- * localities, because plain substring matching against free-text titles
- * makes them collide with unrelated words — verified against live data:
- * "victoria" (also a Brăila locality), "vulcan" (matches inside
- * "vulcanizare" — tire service — constantly; also a Hunedoara city),
- * "bran" (matches inside "membrană"/"membrane"), "cata" (matches inside
- * "catalog"/"cataloage"), "lisa" (matches inside unrelated product codes),
- * "ucea" (too short, matches inside unrelated words), "cristian" (a common
- * first name), "comana" (also a well-known Giurgiu locality). If you need
- * to catch mentions of these, match on a longer, more specific phrase
- * instead (e.g. "comuna bran") rather than the bare name.
+ * Matching is whole-word (see containsWholeWord below), so short names no
+ * longer collide with unrelated words containing them as a substring
+ * ("bran" no longer matches inside "membrană", "vulcan" no longer matches
+ * inside "vulcanizare", etc.). That does NOT protect against a handful of
+ * these being the exact same word as a real locality/name elsewhere in
+ * Romania — "victoria" (also Brăila), "vulcan" (also a Hunedoara city),
+ * "comana" (also Giurgiu), "cristian"/"beclean" (also a common first name /
+ * a Bistrița-Năsăud town) — those are included anyway for recall; expect
+ * an occasional false positive from one of those exact collisions.
  */
 const BRASOV_KEYWORDS = [
   // Authority-name patterns
@@ -380,7 +378,6 @@ const BRASOV_KEYWORDS = [
   'municipiul brasov',
   'orașul brasov',
   'comuna brasov',
-  'comuna bran',
   // Municipii
   'codlea',
   'fagaras',
@@ -393,19 +390,30 @@ const BRASOV_KEYWORDS = [
   'rupea',
   'rasnov',
   'râșnov',
+  'victoria',
   'zarnesti',
   'zărnești',
-  // Comune (distinctive names only — see comment above for exclusions)
+  // Comune
   'apata',
   'apața',
+  'augustin',
+  'beclean',
   'bod',
+  'bran',
   'budila',
   'bunești',
   'bunesti',
+  'cata',
+  'cața',
   'cincu',
+  'comana',
+  'comăna',
+  'cristian',
   'crizbav',
   'dragus',
   'drăguș',
+  'dumbravita',
+  'dumbrăvița',
   'feldioara',
   'fundata',
   'hoghiz',
@@ -418,7 +426,10 @@ const BRASOV_KEYWORDS = [
   'harman',
   'hărman',
   'jibert',
+  'lisa',
   'moieciu',
+  'mandra',
+  'mândra',
   'maierus',
   'măieruș',
   'ormenis',
@@ -430,19 +441,24 @@ const BRASOV_KEYWORDS = [
   'părău',
   'racos',
   'racoș',
+  'recea',
   'sambata de sus',
   'sâmbăta de sus',
+  'sanpetru',
+  'sânpetru',
   'teliu',
   'ticusu',
   'ticușu',
   'tarlungeni',
   'tărlungeni',
+  'ucea',
   'ungra',
   'vama buzăului',
   'vama buzaului',
   'vistea',
   'viștea',
   'voila',
+  'vulcan',
   'sercaia',
   'șercaia',
   'sinca',
@@ -465,5 +481,18 @@ export function isBrasovTender(tender: SeapTender | SeapRawNotice): boolean {
     .join(' ')
     .toLowerCase();
 
-  return BRASOV_KEYWORDS.some((kw) => text.includes(kw.toLowerCase()));
+  return BRASOV_KEYWORDS.some((kw) => containsWholeWord(text, kw));
+}
+
+/**
+ * Check whether `keyword` appears in `text` as a whole word/phrase (not as
+ * a substring inside a longer word) — e.g. "bran" must not match inside
+ * "membrana", "vulcan" must not match inside "vulcanizare". Uses Unicode
+ * property escapes so Romanian diacritics (ă, â, î, ș, ț) count as word
+ * characters for boundary purposes.
+ */
+function containsWholeWord(text: string, keyword: string): boolean {
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'iu');
+  return pattern.test(text);
 }
