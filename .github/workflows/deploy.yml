@@ -37,4 +37,4 @@ jobs:
           key: ${{ secrets.DEPLOY_KEY }}
           port: 22
           script_stop: true
-          source_script: deploy/deploy.sh
+          script_path: deploy/deploy.sh
