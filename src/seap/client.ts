@@ -347,10 +347,26 @@ export async function searchSubThresholdTenders(
 
 /**
  * Brasov county authority keywords for client-side filtering.
- * SEAP does not expose a county filter in its public API, so we
- * filter by matching known Brasov authority patterns.
+ * SEAP does not expose a county filter in its public API, so we filter by
+ * matching known Brasov county administrative unit names (the 4 municipii,
+ * 6 orașe, and comune) plus common authority-name patterns. Deliberately
+ * scoped to Brasov county only — do not add place names from other
+ * counties, even ones that sound similar or are geographically close.
+ *
+ * Kept short/generic-looking names out even when they're real Brasov
+ * localities, because plain substring matching against free-text titles
+ * makes them collide with unrelated words — verified against live data:
+ * "victoria" (also a Brăila locality), "vulcan" (matches inside
+ * "vulcanizare" — tire service — constantly; also a Hunedoara city),
+ * "bran" (matches inside "membrană"/"membrane"), "cata" (matches inside
+ * "catalog"/"cataloage"), "lisa" (matches inside unrelated product codes),
+ * "ucea" (too short, matches inside unrelated words), "cristian" (a common
+ * first name), "comana" (also a well-known Giurgiu locality). If you need
+ * to catch mentions of these, match on a longer, more specific phrase
+ * instead (e.g. "comuna bran") rather than the bare name.
  */
 const BRASOV_KEYWORDS = [
+  // Authority-name patterns
   'brașov',
   'brasov',
   'bj brasov',
@@ -364,45 +380,75 @@ const BRASOV_KEYWORDS = [
   'municipiul brasov',
   'orașul brasov',
   'comuna brasov',
-  'sebes',
-  'fagaras',
-  'rnfov',
-  'predeal',
+  'comuna bran',
+  // Municipii
   'codlea',
-  'buzau',
+  'fagaras',
+  'făgăraș',
   'sacele',
-  'vilcea',
-  'hondoara',
-  'baban',
-  'martin',
-  'galezi',
-  'Zarnesti',
-  'Bran',
-  'Rasnov',
-  'Sag',
-  'Bicaz',
-  'Targu Secuiesc',
-  'Ocna Sibiului',
-  'Vidra',
-  'Alba Iulia',
-  'Cernod',
-  'Darnita',
-  'Hoghiz',
-  'Miercurea',
-  'Bod',
-  'Simeria',
-  'Copsa',
-  'Bunești',
-  'Dărmănești',
-  'Ghimbav',
-  'Dăești',
-  'Bărbulești',
-  'Călimănești',
-  'Hărman',
-  'Bănița',
-  'Băile',
-  'Sovata',
-  'Bunești',
+  'săcele',
+  // Orașe
+  'ghimbav',
+  'predeal',
+  'rupea',
+  'rasnov',
+  'râșnov',
+  'zarnesti',
+  'zărnești',
+  // Comune (distinctive names only — see comment above for exclusions)
+  'apata',
+  'apața',
+  'bod',
+  'budila',
+  'bunești',
+  'bunesti',
+  'cincu',
+  'crizbav',
+  'dragus',
+  'drăguș',
+  'feldioara',
+  'fundata',
+  'hoghiz',
+  'holbav',
+  'homorod',
+  'harseni',
+  'hârseni',
+  'halchiu',
+  'hălchiu',
+  'harman',
+  'hărman',
+  'jibert',
+  'moieciu',
+  'maierus',
+  'măieruș',
+  'ormenis',
+  'ormeniș',
+  'poiana marului',
+  'poiana mărului',
+  'prejmer',
+  'parau',
+  'părău',
+  'racos',
+  'racoș',
+  'sambata de sus',
+  'sâmbăta de sus',
+  'teliu',
+  'ticusu',
+  'ticușu',
+  'tarlungeni',
+  'tărlungeni',
+  'ungra',
+  'vama buzăului',
+  'vama buzaului',
+  'vistea',
+  'viștea',
+  'voila',
+  'sercaia',
+  'șercaia',
+  'sinca',
+  'șinca',
+  'soars',
+  'șoarș',
 ];
 
 /**
