@@ -42,11 +42,14 @@ info "Updated $BEFORE → $AFTER"
 
 # ── Install dependencies & build ───────────────────────────────────
 
-info "Installing production dependencies..."
-sudo npm ci --production || fail "npm ci failed"
+info "Installing dependencies..."
+sudo npm ci || fail "npm ci failed"
 
 info "Building TypeScript..."
 sudo npm run build || fail "TypeScript build failed"
+
+info "Pruning dev dependencies..."
+sudo npm prune --production || fail "npm prune failed"
 
 # ── Ensure data dirs & ownership ───────────────────────────────────
 

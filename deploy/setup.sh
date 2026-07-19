@@ -49,12 +49,15 @@ rsync -a --exclude=node_modules --exclude=dist --exclude=data --exclude=session 
 
 # ── 3. Install dependencies & build ────────────────────────────────
 
-info "Installing production dependencies..."
+info "Installing dependencies..."
 cd "$APP_DIR"
-npm ci --production --ignore-scripts 2>/dev/null || npm ci --production
+npm ci --ignore-scripts 2>/dev/null || npm ci
 
 info "Building TypeScript..."
 npm run build || fail "TypeScript build failed"
+
+info "Pruning dev dependencies..."
+npm prune --production || fail "npm prune failed"
 
 # ── 4. Create data directories ─────────────────────────────────────
 
