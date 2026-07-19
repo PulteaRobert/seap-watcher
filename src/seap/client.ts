@@ -1,16 +1,28 @@
 /**
  * SEAP (e-licitatie.ro) API client.
  *
- * Uses the undocumented public API reverse-engineered from the SEAP web interface
- * and validated against n8n-nodes-seap (https://github.com/cata-g/n8n-nodes-seap).
+ * Uses the undocumented public API reverse-engineered from the live SEAP
+ * frontend's own JS bundle (app-pub) and cross-checked against upbeside/sicap-parser.
+ *
+ * Note: `NoticeCommon/GetCNoticeList/` — despite the name similarity — ignores
+ * sort/filter parameters entirely and always returns a fixed, frozen ~3000-item
+ * snapshot from 2019 regardless of what's sent. The correct endpoint for a real,
+ * currently-filtered search is `GetCANoticeList/`, which honours
+ * startPublicationDate/endPublicationDate server-side.
  *
  * Endpoints:
- *   GET  /api-pub/ComboPub/searchCpvs        — CPV autocomplete
- *   POST /api-pub/NoticeCommon/GetCNoticeList/ — above-threshold tender search (CAN)
- *   POST /api-pub/DaPublic/DaPublicList/     — sub-threshold tender search (DA)
+ *   GET  /api-pub/ComboPub/searchCpvs                          — CPV autocomplete
+ *   POST /api-pub/NoticeCommon/GetCANoticeList/                 — above-threshold tender search (CAN)
+ *   POST /api-pub/DirectAcquisitionCommon/GetDirectAcquisitionList/ — sub-threshold tender search (DA)
  */
 
-import type { SeapNoticeResponse, SeapRawNotice, SeapTender } from './types.js';
+import type {
+	SeapNoticeResponse,
+	SeapRawNotice,
+	SeapDaListResponse,
+	SeapRawDirectAcquisition,
+	SeapTender,
+} from './types.js';
 
 const BASE = 'https://e-licitatie.ro';
 const USER_AGENT =
@@ -71,6 +83,28 @@ export function mapTender(raw: SeapRawNotice, tier: SeapTender['tier']): SeapTen
       : `${BASE}/pub/notices/contract-notices/list/0/0`,
     deadline: raw.minTenderReceiptDeadline ?? undefined,
     type: raw.sysAcquisitionContractType?.text ?? '',
+  };
+}
+
+/** Map a raw direct-acquisition (DA) record to our normalised SeapTender. */
+export function mapDirectAcquisition(raw: SeapRawDirectAcquisition): SeapTender {
+  const cpv = parseCpv(raw.cpvCode);
+
+  return {
+    sicapId: raw.uniqueIdentificationCode,
+    tier: 'sub_threshold',
+    title: raw.directAcquisitionName ?? '',
+    authorityName: raw.contractingAuthority ?? '',
+    authorityCui: undefined,
+    county: '', // populated via client-side filter when county info is available
+    cpvCode: cpv.code,
+    cpvLabel: cpv.label || undefined,
+    valueRon: raw.estimatedValueRon ?? undefined,
+    publicationDate: raw.publicationDate,
+    state: raw.sysDirectAcquisitionState?.text ?? '',
+    url: `${BASE}/pub/direct-acquisition/view/${raw.directAcquisitionId}`,
+    deadline: raw.supplierDecisionDeadline ?? undefined,
+    type: 'Achizitie directa',
   };
 }
 
@@ -149,19 +183,28 @@ export async function searchCpvs(keyword: string, limit = 10): Promise<CpvOption
 /*  Above-threshold tender search (CAN / licitatii publice)            */
 /* ------------------------------------------------------------------ */
 
-interface GetCNoticeListBody {
+interface GetCANoticeListBody {
   sysNoticeTypeIds: number[];
-  sortProperties: Array<{ propertyName: string; sortOrder: string }>;
-  hasUnansweredQuestions: boolean;
-  pageIndex: number;
+  sortProperties: unknown[];
   pageSize: number;
-  cPVId?: number;
-  cPVText?: string;
+  sysNoticeStateId: null;
+  contractingAuthorityId: null;
+  winnerId: null;
+  cPVCategoryId: null;
+  sysContractAssigmentTypeId: null;
+  cPVId: null;
+  assignedUserId: null;
+  sysAcquisitionContractTypeId: null;
+  pageIndex: number;
+  startPublicationDate: string | null;
+  endPublicationDate: string | null;
 }
 
 /**
- * Search above-threshold tenders via SEAP's GetCNoticeList endpoint.
- * Returns all pages up to `maxResults`.
+ * Search above-threshold tenders via SEAP's GetCANoticeList endpoint.
+ * Returns all pages up to `maxResults`. Unlike GetCNoticeList (which ignores
+ * sort/filter params and always returns a frozen 2019 snapshot), this endpoint
+ * honours startPublicationDate/endPublicationDate server-side.
  */
 export async function searchAboveThresholdTenders(
   maxResults: number,
@@ -174,19 +217,26 @@ export async function searchAboveThresholdTenders(
   const pageSize = 50;
 
   for (let page = 0; allItems.length < maxResults; page++) {
-    const body: GetCNoticeListBody = {
+    const body: GetCANoticeListBody = {
       sysNoticeTypeIds: [],
-      sortProperties: [
-        { propertyName: 'noticeStateDate', sortOrder: 'Descending' },
-      ],
-      hasUnansweredQuestions: false,
-      pageIndex: page,
+      sortProperties: [],
       pageSize,
+      sysNoticeStateId: null,
+      contractingAuthorityId: null,
+      winnerId: null,
+      cPVCategoryId: null,
+      sysContractAssigmentTypeId: null,
+      cPVId: null,
+      assignedUserId: null,
+      sysAcquisitionContractTypeId: null,
+      pageIndex: page,
+      startPublicationDate: dateFrom ?? null,
+      endPublicationDate: dateTo ?? null,
     };
 
     const response = await fetchWithRetry<SeapNoticeResponse>(() =>
       fetchJson<SeapNoticeResponse>(
-        `${BASE}/api-pub/NoticeCommon/GetCNoticeList/`,
+        `${BASE}/api-pub/NoticeCommon/GetCANoticeList/`,
         {
           method: 'POST',
           body: JSON.stringify(body),
@@ -201,16 +251,6 @@ export async function searchAboveThresholdTenders(
     if (page === 0) totalMatches = response.total ?? batch.length;
 
     for (const raw of batch) {
-      // Date filtering (client-side since SEAP ignores date params)
-      if (dateFrom) {
-        const noticeDate = new Date(raw.noticeStateDate).toISOString();
-        if (noticeDate < dateFrom) continue;
-      }
-      if (dateTo) {
-        const noticeDate = new Date(raw.noticeStateDate).toISOString();
-        if (noticeDate > dateTo) continue;
-      }
-
       allItems.push(raw);
       if (allItems.length >= maxResults) break;
     }
@@ -225,67 +265,77 @@ export async function searchAboveThresholdTenders(
 /*  Sub-threshold tender search (DA / achizitii directe)               */
 /* ------------------------------------------------------------------ */
 
+interface GetDirectAcquisitionListBody {
+  pageSize: number;
+  showOngoingDa: boolean;
+  cookieContext: null;
+  pageIndex: number;
+  sysDirectAcquisitionStateId: null;
+  publicationDateStart: null;
+  publicationDateEnd: null;
+  finalizationDateStart: string | null;
+  finalizationDateEnd: string | null;
+  cpvCategoryId: null;
+  contractingAuthorityId: null;
+  supplierId: null;
+  cpvCodeId: null;
+}
+
 /**
- * Search sub-threshold tenders (achizitii directe).
- * SEAP uses a different endpoint for DA notices.
+ * Search sub-threshold tenders (achizitii directe) via SEAP's
+ * DirectAcquisitionCommon/GetDirectAcquisitionList endpoint. Date filtering
+ * here is by finalizationDate (when the acquisition closed), not
+ * publicationDate — publicationDateStart/End have no effect on this endpoint.
  */
 export async function searchSubThresholdTenders(
   maxResults: number,
   dateFrom?: string,
   dateTo?: string,
-): Promise<SeapNoticeResponse> {
-  const allItems: SeapRawNotice[] = [];
+): Promise<SeapDaListResponse> {
+  const allItems: SeapRawDirectAcquisition[] = [];
   let searchTooLong = false;
   let totalMatches = 0;
   const pageSize = 50;
 
-  // The DA (direct acquisition) endpoint follows a similar pattern
-  // Using the public API endpoint for DA notices
   for (let page = 0; allItems.length < maxResults; page++) {
-    const body = {
-      pageIndex: page,
+    const body: GetDirectAcquisitionListBody = {
       pageSize,
-      sortColumn: 'publicationDate',
-      sortDirection: 'Descending',
+      showOngoingDa: false,
+      cookieContext: null,
+      pageIndex: page,
+      sysDirectAcquisitionStateId: null,
+      publicationDateStart: null,
+      publicationDateEnd: null,
+      finalizationDateStart: dateFrom ?? null,
+      finalizationDateEnd: dateTo ?? null,
+      cpvCategoryId: null,
+      contractingAuthorityId: null,
+      supplierId: null,
+      cpvCodeId: null,
     };
 
-    try {
-      const response = await fetchWithRetry<SeapNoticeResponse>(() =>
-        fetchJson<SeapNoticeResponse>(
-          `${BASE}/api-pub/DaPublic/DaPublicList/`,
-          {
-            method: 'POST',
-            body: JSON.stringify(body),
-          },
-        ),
-      );
+    const response = await fetchWithRetry<SeapDaListResponse>(() =>
+      fetchJson<SeapDaListResponse>(
+        `${BASE}/api-pub/DirectAcquisitionCommon/GetDirectAcquisitionList/`,
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+        },
+      ),
+    );
 
-      const batch = response.items ?? [];
-      if (batch.length === 0) break;
+    const batch = response.items ?? [];
+    if (batch.length === 0) break;
 
-      searchTooLong = searchTooLong || response.searchTooLong;
-      if (page === 0) totalMatches = response.total ?? batch.length;
+    searchTooLong = searchTooLong || response.searchTooLong;
+    if (page === 0) totalMatches = response.total ?? batch.length;
 
-      for (const raw of batch) {
-        // Date filtering for DA notices
-        if (dateFrom) {
-          const pubDate = new Date((raw as any).noticeStateDate ?? (raw as any).publicationDate ?? '').toISOString();
-          if (pubDate < dateFrom) continue;
-        }
-        if (dateTo) {
-          const pubDate = new Date((raw as any).noticeStateDate ?? (raw as any).publicationDate ?? '').toISOString();
-          if (pubDate > dateTo) continue;
-        }
-
-        allItems.push(raw);
-        if (allItems.length >= maxResults) break;
-      }
-
-      if (batch.length < pageSize) break;
-    } catch {
-      // DA endpoint may not exist or may have a different path — log and continue
-      break;
+    for (const raw of batch) {
+      allItems.push(raw);
+      if (allItems.length >= maxResults) break;
     }
+
+    if (batch.length < pageSize) break;
   }
 
   return { items: allItems, searchTooLong, total: totalMatches };

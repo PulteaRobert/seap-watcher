@@ -177,6 +177,37 @@ describe("SEAP client", () => {
 		});
 	});
 
+	describe("mapDirectAcquisition", () => {
+		it("maps a raw direct-acquisition record to a SeapTender", () => {
+			const raw = {
+				directAcquisitionId: 103063481,
+				directAcquisitionName: "Anvelopa 185/65R15 88T vara Matador MP47",
+				sysDirectAcquisitionState: { id: 7, text: "Oferta acceptata" },
+				uniqueIdentificationCode: "DA22780457",
+				cpvCode: "34351100-3 - Pneuri pentru autovehicule (Rev.2)",
+				publicationDate: "2026-07-16T14:17:43+03:00",
+				finalizationDate: "2026-07-17T14:33:57+03:00",
+				supplierDecisionDeadline: "2026-07-20T17:00:00+03:00",
+				supplier: "RO 6865630 DELTA PLUS TRADING S.R.L.",
+				contractingAuthority: "4317975 Unitatea Militara 01714",
+				estimatedValueRon: 1132.16,
+			};
+
+			const tender = client.mapDirectAcquisition(raw);
+
+			expect(tender.sicapId).toBe("DA22780457");
+			expect(tender.tier).toBe("sub_threshold");
+			expect(tender.title).toBe("Anvelopa 185/65R15 88T vara Matador MP47");
+			expect(tender.authorityName).toBe("4317975 Unitatea Militara 01714");
+			expect(tender.cpvCode).toBe("34351100-3");
+			expect(tender.cpvLabel).toBe("Pneuri pentru autovehicule (Rev.2)");
+			expect(tender.valueRon).toBe(1132.16);
+			expect(tender.state).toBe("Oferta acceptata");
+			expect(tender.url).toContain("103063481");
+			expect(tender.deadline).toBe("2026-07-20T17:00:00+03:00");
+		});
+	});
+
 	describe("isBrasovTender", () => {
 		it("identifies Brasov tenders by authority name", () => {
 			const brasovTender = {
@@ -242,26 +273,28 @@ describe("SEAP client", () => {
 			expect(result.total).toBe(3);
 			expect(result.searchTooLong).toBe(false);
 			expect(mockFetch).toHaveBeenCalledWith(
-				"https://e-licitatie.ro/api-pub/NoticeCommon/GetCNoticeList/",
+				"https://e-licitatie.ro/api-pub/NoticeCommon/GetCANoticeList/",
 				expect.objectContaining({
 					method: "POST",
 				}),
 			);
 		});
 
-		it("filters by date range", async () => {
+		it("sends the date range as startPublicationDate/endPublicationDate", async () => {
 			mockFetch.mockResolvedValueOnce(
 				mockJsonResponse(FIXTURE_NOTICE_RESPONSE),
 			);
 
-			// Only include tenders from after March 2026
-			const result = await client.searchAboveThresholdTenders(
+			await client.searchAboveThresholdTenders(
 				100,
 				"2026-03-20T00:00:00Z",
+				"2026-05-20T00:00:00Z",
 			);
 
-			// The fixture has dates in March and May 2026; filtering should reduce results
-			expect(result.items.length).toBeLessThanOrEqual(3);
+			const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+			const body = JSON.parse(options.body as string);
+			expect(body.startPublicationDate).toBe("2026-03-20T00:00:00Z");
+			expect(body.endPublicationDate).toBe("2026-05-20T00:00:00Z");
 		});
 
 		it("handles empty responses", async () => {
@@ -284,6 +317,65 @@ describe("SEAP client", () => {
 
 			expect(result.items).toHaveLength(3);
 			expect(mockFetch).toHaveBeenCalledTimes(2); // initial + 1 retry
+		});
+	});
+
+	describe("searchSubThresholdTenders", () => {
+		const FIXTURE_DA_RESPONSE = {
+			total: 1,
+			items: [
+				{
+					directAcquisitionId: 103063481,
+					directAcquisitionName: "Anvelopa 185/65R15 88T vara Matador MP47",
+					sysDirectAcquisitionState: { id: 7, text: "Oferta acceptata" },
+					uniqueIdentificationCode: "DA22780457",
+					cpvCode: "34351100-3 - Pneuri pentru autovehicule (Rev.2)",
+					publicationDate: "2026-07-16T14:17:43+03:00",
+					contractingAuthority: "4317975 Unitatea Militara 01714",
+					estimatedValueRon: 1132.16,
+				},
+			],
+			searchTooLong: false,
+		};
+
+		it("calls the GetDirectAcquisitionList endpoint", async () => {
+			mockFetch.mockResolvedValueOnce(mockJsonResponse(FIXTURE_DA_RESPONSE));
+
+			const result = await client.searchSubThresholdTenders(100);
+
+			expect(result.items).toHaveLength(1);
+			expect(mockFetch).toHaveBeenCalledWith(
+				"https://e-licitatie.ro/api-pub/DirectAcquisitionCommon/GetDirectAcquisitionList/",
+				expect.objectContaining({ method: "POST" }),
+			);
+		});
+
+		it("sends the date range as finalizationDateStart/End, not publicationDate", async () => {
+			mockFetch.mockResolvedValueOnce(mockJsonResponse(FIXTURE_DA_RESPONSE));
+
+			await client.searchSubThresholdTenders(
+				100,
+				"2026-07-17T00:00:00Z",
+				"2026-07-19T00:00:00Z",
+			);
+
+			const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+			const body = JSON.parse(options.body as string);
+			expect(body.finalizationDateStart).toBe("2026-07-17T00:00:00Z");
+			expect(body.finalizationDateEnd).toBe("2026-07-19T00:00:00Z");
+			expect(body.publicationDateStart).toBeNull();
+			expect(body.publicationDateEnd).toBeNull();
+		});
+
+		it("handles empty responses", async () => {
+			mockFetch.mockResolvedValueOnce(
+				mockJsonResponse({ total: 0, items: [], searchTooLong: false }),
+			);
+
+			const result = await client.searchSubThresholdTenders(100);
+
+			expect(result.items).toHaveLength(0);
+			expect(result.total).toBe(0);
 		});
 	});
 

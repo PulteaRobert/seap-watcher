@@ -85,6 +85,29 @@ export interface SeapRawNotice {
 	estimatedValueExport?: string;
 }
 
+/** Raw SEAP API response envelope for direct-acquisition list queries. */
+export interface SeapDaListResponse {
+	total: number;
+	items: SeapRawDirectAcquisition[];
+	searchTooLong: boolean;
+}
+
+/** A single raw direct-acquisition (DA) item from the SEAP API. */
+export interface SeapRawDirectAcquisition {
+	directAcquisitionId: number;
+	directAcquisitionName: string;
+	sysDirectAcquisitionState: { id: number; text: string };
+	uniqueIdentificationCode: string;
+	cpvCode: string;
+	publicationDate: string;
+	finalizationDate?: string;
+	caDecisionDeadline?: string;
+	supplierDecisionDeadline?: string;
+	supplier?: string;
+	contractingAuthority: string;
+	estimatedValueRon?: number;
+}
+
 /** Result of a SEAP search operation. */
 export interface SeapSearchResult {
 	tenders: SeapTender[];

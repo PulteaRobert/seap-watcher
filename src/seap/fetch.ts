@@ -11,6 +11,7 @@ import {
 	searchAboveThresholdTenders,
 	searchSubThresholdTenders,
 	mapTender,
+	mapDirectAcquisition,
 	isBrasovTender,
 } from "./client.js";
 import { upsertTenders, getNewTenders, logRun } from "../db/operations.js";
@@ -96,7 +97,7 @@ export async function fetchBrasovTenders(
 		}
 
 		for (const raw of subResult.items) {
-			const tender = mapTender(raw, "sub_threshold");
+			const tender = mapDirectAcquisition(raw);
 			if (isBrasovTender(tender)) {
 				tender.county = config.seapCounty;
 				allTenders.push(tender);

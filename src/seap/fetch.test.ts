@@ -16,6 +16,7 @@ import type { SeapTender } from "./types.js";
 const mockSearchAboveThreshold = vi.fn();
 const mockSearchSubThreshold = vi.fn();
 const mockMapTender = vi.fn();
+const mockMapDirectAcquisition = vi.fn();
 const mockIsBrasovTender = vi.fn();
 const mockUpsertTenders = vi.fn();
 const mockGetNewTenders = vi.fn();
@@ -27,6 +28,8 @@ vi.mock("./client.js", () => ({
 	searchSubThresholdTenders: (...args: unknown[]) =>
 		mockSearchSubThreshold(...args),
 	mapTender: (...args: unknown[]) => mockMapTender(...args),
+	mapDirectAcquisition: (...args: unknown[]) =>
+		mockMapDirectAcquisition(...args),
 	isBrasovTender: (...args: unknown[]) => mockIsBrasovTender(...args),
 }));
 
@@ -116,6 +119,7 @@ function resetMocks() {
 	mockSearchAboveThreshold.mockReset();
 	mockSearchSubThreshold.mockReset();
 	mockMapTender.mockReset();
+	mockMapDirectAcquisition.mockReset();
 	mockIsBrasovTender.mockReset();
 	mockUpsertTenders.mockReset();
 	mockGetNewTenders.mockReset();
@@ -211,14 +215,13 @@ describe("fetchBrasovTenders", () => {
 		});
 
 		mockSearchSubThreshold.mockResolvedValueOnce({
-			items: [{ ...fixtureRawNotice, noticeNo: "DA001" }],
+			items: [{ uniqueIdentificationCode: "DA001" }],
 			total: 1,
 			searchTooLong: false,
 		});
 
-		mockMapTender
-			.mockReturnValueOnce(fixtureMappedTender) // above-threshold
-			.mockReturnValueOnce(subThresholdTender); // sub-threshold
+		mockMapTender.mockReturnValueOnce(fixtureMappedTender); // above-threshold
+		mockMapDirectAcquisition.mockReturnValueOnce(subThresholdTender); // sub-threshold
 
 		mockIsBrasovTender.mockReturnValue(true); // Both are Brasov
 		mockGetNewTenders.mockReturnValueOnce([
