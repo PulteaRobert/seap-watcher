@@ -20,12 +20,14 @@ fail() {
 
 cd "$APP_DIR" || fail "Cannot cd to $APP_DIR"
 
-git config --global --add safe.directory "$APP_DIR"
+# $APP_DIR is owned by $SERVICE_USER, not the SSH deploy user, so every
+# privileged step below runs via sudo (deploy user needs passwordless sudo).
+sudo git config --global --add safe.directory "$APP_DIR"
 
 info "Pulling latest changes..."
-BEFORE="$(git rev-parse HEAD)"
-git pull --ff-only || fail "git pull failed"
-AFTER="$(git rev-parse HEAD)"
+BEFORE="$(sudo git rev-parse HEAD)"
+sudo git pull --ff-only || fail "git pull failed"
+AFTER="$(sudo git rev-parse HEAD)"
 
 if [ "$BEFORE" = "$AFTER" ]; then
 	info "No new changes — skipping rebuild."
@@ -37,32 +39,32 @@ info "Updated $BEFORE → $AFTER"
 # ── Install dependencies & build ───────────────────────────────────
 
 info "Installing production dependencies..."
-npm ci --production || fail "npm ci failed"
+sudo npm ci --production || fail "npm ci failed"
 
 info "Building TypeScript..."
-npm run build || fail "TypeScript build failed"
+sudo npm run build || fail "TypeScript build failed"
 
 # ── Ensure data dirs & ownership ───────────────────────────────────
 
-mkdir -p "$APP_DIR/data" "$APP_DIR/session"
-chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR"
+sudo mkdir -p "$APP_DIR/data" "$APP_DIR/session"
+sudo chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR"
 
 # ── Update service file if changed ─────────────────────────────────
 
 SERVICE_FILE="$APP_DIR/deploy/systemd/${SERVICE_NAME}.service"
 if [ -f "$SERVICE_FILE" ]; then
-	cp "$SERVICE_FILE" "/etc/systemd/system/${SERVICE_NAME}.service"
-	systemctl daemon-reload
+	sudo cp "$SERVICE_FILE" "/etc/systemd/system/${SERVICE_NAME}.service"
+	sudo systemctl daemon-reload
 	info "Service file updated."
 fi
 
 # ── Restart & verify ───────────────────────────────────────────────
 
 info "Restarting $SERVICE_NAME..."
-systemctl restart "$SERVICE_NAME" || fail "systemctl restart failed"
+sudo systemctl restart "$SERVICE_NAME" || fail "systemctl restart failed"
 
 sleep 3
-STATUS="$(systemctl is-active "$SERVICE_NAME" 2>/dev/null || echo 'unknown')"
+STATUS="$(sudo systemctl is-active "$SERVICE_NAME" 2>/dev/null || echo 'unknown')"
 
 if [ "$STATUS" = "active" ]; then
 	ok "$SERVICE_NAME is running!"
