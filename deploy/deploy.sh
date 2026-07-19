@@ -11,9 +11,12 @@ APP_DIR="/opt/seap-watcher"
 SERVICE_NAME="seap-watcher"
 SERVICE_USER="seap"
 
-info()  { echo "ℹ  $*"; }
-ok()    { echo "✅ $*"; }
-fail()  { echo "❌ $*" >&2; exit 1; }
+info() { echo "ℹ  $*"; }
+ok() { echo "✅ $*"; }
+fail() {
+	echo "❌ $*" >&2
+	exit 1
+}
 
 cd "$APP_DIR" || fail "Cannot cd to $APP_DIR"
 
@@ -23,8 +26,8 @@ git pull --ff-only || fail "git pull failed"
 AFTER="$(git rev-parse HEAD)"
 
 if [ "$BEFORE" = "$AFTER" ]; then
-  info "No new changes — skipping rebuild."
-  exit 0
+	info "No new changes — skipping rebuild."
+	exit 0
 fi
 
 info "Updated $BEFORE → $AFTER"
@@ -46,9 +49,9 @@ chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR"
 
 SERVICE_FILE="$APP_DIR/deploy/systemd/${SERVICE_NAME}.service"
 if [ -f "$SERVICE_FILE" ]; then
-  cp "$SERVICE_FILE" "/etc/systemd/system/${SERVICE_NAME}.service"
-  systemctl daemon-reload
-  info "Service file updated."
+	cp "$SERVICE_FILE" "/etc/systemd/system/${SERVICE_NAME}.service"
+	systemctl daemon-reload
+	info "Service file updated."
 fi
 
 # ── Restart & verify ───────────────────────────────────────────────
@@ -60,7 +63,7 @@ sleep 3
 STATUS="$(systemctl is-active "$SERVICE_NAME" 2>/dev/null || echo 'unknown')"
 
 if [ "$STATUS" = "active" ]; then
-  ok "$SERVICE_NAME is running!"
+	ok "$SERVICE_NAME is running!"
 else
-  fail "$SERVICE_NAME status: $STATUS"
+	fail "$SERVICE_NAME status: $STATUS"
 fi
