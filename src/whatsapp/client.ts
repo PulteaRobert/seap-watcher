@@ -55,7 +55,7 @@ export class BaileysWhatsAppClient implements WhatsAppClient {
 	private _closing = false;
 
 	constructor(
-		private _toPhone: string,
+		private _toPhones: string[],
 		private _logger: Logger,
 		private _sessionPath: string = "./session",
 		private _maxReconnectAttempts: number = 5,
@@ -166,16 +166,20 @@ export class BaileysWhatsAppClient implements WhatsAppClient {
 			return false;
 		}
 
-		try {
-			const jid = `${this._toPhone}@s.whatsapp.net`;
-
-			await this._sock.sendMessage(jid, { text });
-			this._logger.info({ to: this._toPhone }, "WhatsApp message sent");
-			return true;
-		} catch (err) {
-			this._logger.error({ err }, "Failed to send WhatsApp message");
-			return false;
+		// Send to every configured recipient independently — one bad/invalid
+		// number shouldn't block delivery to the rest.
+		let anySent = false;
+		for (const toPhone of this._toPhones) {
+			try {
+				const jid = `${toPhone}@s.whatsapp.net`;
+				await this._sock.sendMessage(jid, { text });
+				this._logger.info({ to: toPhone }, "WhatsApp message sent");
+				anySent = true;
+			} catch (err) {
+				this._logger.error({ err, to: toPhone }, "Failed to send WhatsApp message");
+			}
 		}
+		return anySent;
 	}
 
 	/* ---- status ----------------------------------------------------- */
@@ -236,10 +240,10 @@ export class BaileysWhatsAppClient implements WhatsAppClient {
 /* ------------------------------------------------------------------ */
 
 export async function createBaileysClient(
-	toPhone: string,
+	toPhones: string[],
 	logger: Logger,
 	sessionPath?: string,
 ): Promise<WhatsAppClient> {
-	const client = new BaileysWhatsAppClient(toPhone, logger, sessionPath);
+	const client = new BaileysWhatsAppClient(toPhones, logger, sessionPath);
 	return client;
 }

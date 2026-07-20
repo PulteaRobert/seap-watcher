@@ -4,10 +4,21 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const ConfigSchema = z.object({
-	whatsappToPhone: z
+	whatsappToPhones: z
 		.string()
 		.min(8)
-		.describe("WhatsApp recipient in E.164 format"),
+		.transform((s) =>
+			s
+				.split(",")
+				.map((p) => p.trim())
+				.filter((p) => p.length > 0),
+		)
+		.refine((arr) => arr.length > 0, {
+			message: "WHATSAPP_TO_PHONE must contain at least one phone number",
+		})
+		.describe(
+			"WhatsApp recipients in E.164 format, comma-separated for multiple numbers",
+		),
 	seapCounty: z.string().default("Brasov").describe("County to monitor"),
 	cronMorning: z.string().default("0 7 * * 1-5").describe("Morning cron (EET)"),
 	cronAfternoon: z
@@ -26,7 +37,7 @@ export type Config = z.infer<typeof ConfigSchema>;
 
 export function loadConfig(): Config {
 	return ConfigSchema.parse({
-		whatsappToPhone: process.env.WHATSAPP_TO_PHONE,
+		whatsappToPhones: process.env.WHATSAPP_TO_PHONE,
 		seapCounty: process.env.SEAP_COUNTY,
 		cronMorning: process.env.CRON_MORNING,
 		cronAfternoon: process.env.CRON_AFTERNOON,

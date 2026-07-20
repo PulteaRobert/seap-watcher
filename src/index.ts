@@ -27,9 +27,9 @@ async function main(): Promise<void> {
 
 	let whatsapp;
 	if (useNoOp) {
-		whatsapp = await createNoOpClient(config.whatsappToPhone, logger);
+		whatsapp = await createNoOpClient(config.whatsappToPhones, logger);
 	} else {
-		whatsapp = await createBaileysClient(config.whatsappToPhone, logger);
+		whatsapp = await createBaileysClient(config.whatsappToPhones, logger);
 	}
 	await whatsapp.connect();
 

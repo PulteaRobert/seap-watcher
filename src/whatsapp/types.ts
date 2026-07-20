@@ -27,6 +27,6 @@ export interface WhatsAppClient {
  * Phase 4 replaces this with the real Baileys factory.
  */
 export type WhatsAppFactory = (
-	toPhone: string,
+	toPhones: string[],
 	logger: Logger,
 ) => Promise<WhatsAppClient>;

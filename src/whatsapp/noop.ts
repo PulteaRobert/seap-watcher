@@ -12,13 +12,15 @@ export class NoOpWhatsAppClient implements WhatsAppClient {
 	private _connected = false;
 
 	constructor(
-		private _toPhone: string,
+		private _toPhones: string[],
 		private _logger: Logger,
 	) {}
 
 	async connect(): Promise<void> {
 		this._connected = true;
-		this._logger.info(`[NoOpWhatsApp] Connected (to: ${this._toPhone})`);
+		this._logger.info(
+			`[NoOpWhatsApp] Connected (to: ${this._toPhones.join(", ")})`,
+		);
 	}
 
 	async sendMessage(text: string): Promise<boolean> {
@@ -26,10 +28,12 @@ export class NoOpWhatsAppClient implements WhatsAppClient {
 			this._logger.error("[NoOpWhatsApp] Not connected — message dropped");
 			return false;
 		}
-		this._logger.info(
-			{ to: this._toPhone },
-			"[NoOpWhatsApp] Would send:\n" + text,
-		);
+		for (const toPhone of this._toPhones) {
+			this._logger.info(
+				{ to: toPhone },
+				"[NoOpWhatsApp] Would send:\n" + text,
+			);
+		}
 		return true;
 	}
 
@@ -44,8 +48,8 @@ export class NoOpWhatsAppClient implements WhatsAppClient {
 }
 
 export async function createNoOpClient(
-	toPhone: string,
+	toPhones: string[],
 	logger: Logger,
 ): Promise<WhatsAppClient> {
-	return new NoOpWhatsAppClient(toPhone, logger);
+	return new NoOpWhatsAppClient(toPhones, logger);
 }
