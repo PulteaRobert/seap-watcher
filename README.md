@@ -75,7 +75,7 @@ This script:
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `WHATSAPP_TO_PHONE` | *(required)* | Phone in E.164 format (e.g. `40712345678`) |
+| `WHATSAPP_TO_PHONE` | *(required)* | Phone(s) in E.164 format; comma-separated for multiple recipients (e.g. `40712345678,40798765432`) |
 | `SEAP_COUNTY` | `Brasov` | County to monitor |
 | `CRON_MORNING` | `0 7 * * 1-5` | Morning cron (Europe/Bucharest) |
 | `CRON_AFTERNOON` | `0 13 * * 1-5` | Afternoon cron (Europe/Bucharest) |
@@ -95,6 +95,11 @@ bash scripts/health-check.sh
 
 # Restart service
 sudo systemctl restart seap-watcher
+
+# Trigger a single manual check (fetch + alert), then exit —
+# same pipeline the cron schedule runs, useful for testing
+npm run run-once             # local dev
+sudo -u seap /usr/bin/node /opt/seap-watcher/dist/index.js --run-once   # on the VPS
 
 # View database
 sqlite3 data/seap-watcher.db '.tables'
