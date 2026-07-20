@@ -98,9 +98,20 @@ bash scripts/health-check.sh
 sudo systemctl restart seap-watcher
 
 # Trigger a single manual check (fetch + alert), then exit —
-# same pipeline the cron schedule runs, useful for testing
+# same pipeline the cron schedule runs, useful for testing.
+# NOTE: only sends WhatsApp if there are new (unalerted) tenders, and
+# shares the WhatsApp session with the live service — stop it first
+# on the VPS or you'll get a connection conflict:
+#   sudo systemctl stop seap-watcher
 npm run run-once             # local dev
 sudo -u seap NODE_ENV=production /usr/bin/node /opt/seap-watcher/dist/index.js --run-once   # on the VPS
+#   sudo systemctl start seap-watcher
+
+# Send a one-off WhatsApp test message to every configured recipient,
+# regardless of whether there are new tenders — useful for verifying
+# delivery after changing WHATSAPP_TO_PHONE. Same session-conflict
+# caveat as run-once: stop the service first.
+sudo -u seap NODE_ENV=production node scripts/test-send.js
 
 # View database
 sqlite3 data/seap-watcher.db '.tables'
