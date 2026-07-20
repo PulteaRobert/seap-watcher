@@ -1,7 +1,15 @@
 import { z } from "zod";
 import dotenv from "dotenv";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 
-dotenv.config();
+// Resolve .env relative to the project root (one level above this file's
+// directory — src/ in dev, dist/ when compiled) rather than process.cwd(),
+// so config loads correctly no matter what directory the process was
+// launched from (e.g. a manual `node dist/index.js` run outside the
+// systemd unit's WorkingDirectory).
+const __dirname = dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: resolve(__dirname, "..", ".env") });
 
 const ConfigSchema = z.object({
 	whatsappToPhones: z
