@@ -1,6 +1,6 @@
 /**
  * Scheduled task runner — triggers the fetch → dedup → alert pipeline
- * twice daily on weekdays via node-cron.
+ * once daily on weekdays via node-cron.
  */
 
 import cron, { type ScheduledTask } from "node-cron";
@@ -82,7 +82,7 @@ export interface SchedulerHandle {
 }
 
 /**
- * Start the cron-based scheduler with morning and afternoon slots.
+ * Start the cron-based scheduler with a single daily run.
  *
  * @returns A handle for stopping the scheduler.
  */
@@ -94,22 +94,8 @@ export function startScheduler(
 ): SchedulerHandle {
 	const jobs: ScheduledTask[] = [];
 
-	// Morning run
-	const morningJob = cron.schedule(
-		config.cronMorning,
-		() => {
-			void runCheck("morning", config, db, whatsapp, logger);
-		},
-		{
-			timezone: "Europe/Bucharest",
-		},
-	);
-	jobs.push(morningJob);
-	logger.info(`Morning cron scheduled: ${config.cronMorning}`);
-
-	// Afternoon run
-	const afternoonJob = cron.schedule(
-		config.cronAfternoon,
+	const dailyJob = cron.schedule(
+		config.cronSchedule,
 		() => {
 			void runCheck("afternoon", config, db, whatsapp, logger);
 		},
@@ -117,8 +103,8 @@ export function startScheduler(
 			timezone: "Europe/Bucharest",
 		},
 	);
-	jobs.push(afternoonJob);
-	logger.info(`Afternoon cron scheduled: ${config.cronAfternoon}`);
+	jobs.push(dailyJob);
+	logger.info(`Daily cron scheduled: ${config.cronSchedule}`);
 
 	return {
 		stop() {

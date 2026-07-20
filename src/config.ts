@@ -34,11 +34,10 @@ const ConfigSchema = z.object({
 			"WhatsApp recipients in E.164 format, comma-separated for multiple numbers",
 		),
 	seapCounty: z.string().default("Brasov").describe("County to monitor"),
-	cronMorning: z.string().default("0 7 * * 1-5").describe("Morning cron (EET)"),
-	cronAfternoon: z
+	cronSchedule: z
 		.string()
-		.default("0 13 * * 1-5")
-		.describe("Afternoon cron (EET)"),
+		.default("0 17 * * 1-5")
+		.describe("Daily check cron expression (EET)"),
 	dbPath: z
 		.string()
 		.default("./data/seap-watcher.db")
@@ -59,8 +58,7 @@ export function loadConfig(): Config {
 	return ConfigSchema.parse({
 		whatsappToPhones: process.env.WHATSAPP_TO_PHONE,
 		seapCounty: process.env.SEAP_COUNTY,
-		cronMorning: process.env.CRON_MORNING,
-		cronAfternoon: process.env.CRON_AFTERNOON,
+		cronSchedule: process.env.CRON_SCHEDULE,
 		dbPath: process.env.DB_PATH,
 		sessionPath: process.env.SESSION_PATH,
 		logLevel: process.env.LOG_LEVEL,

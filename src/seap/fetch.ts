@@ -40,7 +40,11 @@ export async function fetchBrasovTenders(
 	slot: RunSlot = "morning",
 ): Promise<SeapTender[]> {
 	const now = new Date();
-	const windowHours = 12; // overlap safety — covers both morning and afternoon slots
+	// Runs are once daily (24h gap); 30h keeps the same ~6h overlap margin
+	// the old twice-daily schedule had, so nothing is missed by clock drift
+	// or a delayed run — real "new" filtering still happens via the
+	// alerted flag, not this window.
+	const windowHours = 30;
 	const sinceDate = new Date(
 		now.getTime() - windowHours * 60 * 60 * 1000,
 	).toISOString();

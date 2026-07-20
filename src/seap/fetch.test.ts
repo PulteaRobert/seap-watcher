@@ -57,8 +57,7 @@ import { fetchBrasovTenders } from "./fetch.js";
 const mockConfig: Config = {
 	whatsappToPhones: ["40712345678"],
 	seapCounty: "Brasov",
-	cronMorning: "0 7 * * 1-5",
-	cronAfternoon: "0 13 * * 1-5",
+	cronSchedule: "0 17 * * 1-5",
 	dbPath: ":memory:",
 	sessionPath: "./session",
 	logLevel: "info",

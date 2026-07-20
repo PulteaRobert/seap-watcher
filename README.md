@@ -2,14 +2,14 @@
 
 Monitors Romanian public procurement ([SEAP](https://e-licitatie.ro))
 for new tenders in **Brasov county** and sends **WhatsApp alerts**
-twice daily on weekdays.
+once daily on weekdays.
 
 ## How It Works
 
 ```
 ┌──────────┐   ┌────────┐   ┌────────┐   ┌──────────┐
 │ SEAP API │──▶│ SQLite │──▶│ Dedup  │──▶│ WhatsApp │
-│  (2x/day)│   │(store) │   │ (diff) │   │ (alert)  │
+│ (1x/day) │   │(store) │   │ (diff) │   │ (alert)  │
 └──────────┘   └────────┘   └────────┘   └──────────┘
 ```
 
@@ -77,8 +77,7 @@ This script:
 | --- | --- | --- |
 | `WHATSAPP_TO_PHONE` | *(required)* | Phone(s) in E.164 format; comma-separated for multiple recipients (e.g. `40712345678,40798765432`) |
 | `SEAP_COUNTY` | `Brasov` | County to monitor |
-| `CRON_MORNING` | `0 7 * * 1-5` | Morning cron (Europe/Bucharest) |
-| `CRON_AFTERNOON` | `0 13 * * 1-5` | Afternoon cron (Europe/Bucharest) |
+| `CRON_SCHEDULE` | `0 17 * * 1-5` | Daily check cron expression (Europe/Bucharest) |
 | `DB_PATH` | `./data/seap-watcher.db` | SQLite DB path (relative paths resolve against the project root, not cwd) |
 | `SESSION_PATH` | `./session` | Baileys WhatsApp session directory (same relative-path resolution as `DB_PATH`) |
 | `LOG_LEVEL` | `info` | Log level (`debug`, `info`, `warn`, `error`) |

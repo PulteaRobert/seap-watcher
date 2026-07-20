@@ -5,12 +5,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A Node.js/TypeScript service that polls the Romanian public procurement portal SEAP
-(e-licitatie.ro) twice daily for new tenders in Brasov county and sends a WhatsApp
+(e-licitatie.ro) once daily for new tenders in Brasov county and sends a WhatsApp
 alert via Baileys (WhatsApp Web automation). State (seen tenders, run history) is
 kept in a local SQLite file via better-sqlite3.
 
 ```
-SEAP API (2x/day) → SQLite (store) → alerted=0 filter → WhatsApp (alert)
+SEAP API (1x/day) → SQLite (store) → alerted=0 filter → WhatsApp (alert)
 ```
 
 ## Commands
@@ -62,10 +62,10 @@ tightening/widening rather than changing the matching logic itself). The DA endp
 call is wrapped in its own try/catch that swallows failures (endpoint may not exist
 or may change shape) rather than failing the whole run.
 
-**Fetch window overlap is intentional.** `fetchBrasovTenders` always looks back 12
-hours regardless of which cron slot triggered it, specifically so morning/afternoon
-runs overlap and nothing is missed by clock drift — real "new" filtering still
-happens via the `alerted` flag, not the window.
+**Fetch window overlap is intentional.** `fetchBrasovTenders` always looks back 30
+hours — a ~6h margin over the 24h gap between daily runs — so nothing is missed by
+clock drift or a delayed run. Real "new" filtering still happens via the `alerted`
+flag, not the window.
 
 **Config is the single source of env truth.** `src/config.ts` defines a Zod schema
 and is the only place that reads `process.env` for app settings (`loadConfig()`).
