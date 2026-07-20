@@ -99,7 +99,7 @@ sudo systemctl restart seap-watcher
 # Trigger a single manual check (fetch + alert), then exit —
 # same pipeline the cron schedule runs, useful for testing
 npm run run-once             # local dev
-sudo -u seap /usr/bin/node /opt/seap-watcher/dist/index.js --run-once   # on the VPS
+sudo -u seap NODE_ENV=production /usr/bin/node /opt/seap-watcher/dist/index.js --run-once   # on the VPS
 
 # View database
 sqlite3 data/seap-watcher.db '.tables'
