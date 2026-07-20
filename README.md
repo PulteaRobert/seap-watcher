@@ -79,7 +79,8 @@ This script:
 | `SEAP_COUNTY` | `Brasov` | County to monitor |
 | `CRON_MORNING` | `0 7 * * 1-5` | Morning cron (Europe/Bucharest) |
 | `CRON_AFTERNOON` | `0 13 * * 1-5` | Afternoon cron (Europe/Bucharest) |
-| `DB_PATH` | `./data/seap-watcher.db` | SQLite DB path |
+| `DB_PATH` | `./data/seap-watcher.db` | SQLite DB path (relative paths resolve against the project root, not cwd) |
+| `SESSION_PATH` | `./session` | Baileys WhatsApp session directory (same relative-path resolution as `DB_PATH`) |
 | `LOG_LEVEL` | `info` | Log level (`debug`, `info`, `warn`, `error`) |
 | `MAX_TENDERS_PER_RUN` | `200` | Max tenders fetched per run |
 | `NO_OP_WHATSAPP` | *(empty)* | Set to `1` to skip live WhatsApp |

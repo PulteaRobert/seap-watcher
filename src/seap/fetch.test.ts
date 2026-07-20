@@ -60,6 +60,7 @@ const mockConfig: Config = {
 	cronMorning: "0 7 * * 1-5",
 	cronAfternoon: "0 13 * * 1-5",
 	dbPath: ":memory:",
+	sessionPath: "./session",
 	logLevel: "info",
 	maxTendersPerRun: 200,
 };

@@ -1,15 +1,21 @@
 import { z } from "zod";
 import dotenv from "dotenv";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 
-// Resolve .env relative to the project root (one level above this file's
+// Resolve relative to the project root (one level above this file's
 // directory — src/ in dev, dist/ when compiled) rather than process.cwd(),
 // so config loads correctly no matter what directory the process was
 // launched from (e.g. a manual `node dist/index.js` run outside the
 // systemd unit's WorkingDirectory).
 const __dirname = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: resolve(__dirname, "..", ".env") });
+const projectRoot = resolve(__dirname, "..");
+dotenv.config({ path: resolve(projectRoot, ".env") });
+
+/** Resolve a possibly-relative path against the project root, not cwd. */
+function resolveFromRoot(path: string): string {
+	return isAbsolute(path) ? path : resolve(projectRoot, path);
+}
 
 const ConfigSchema = z.object({
 	whatsappToPhones: z
@@ -36,7 +42,13 @@ const ConfigSchema = z.object({
 	dbPath: z
 		.string()
 		.default("./data/seap-watcher.db")
+		.transform(resolveFromRoot)
 		.describe("SQLite DB path"),
+	sessionPath: z
+		.string()
+		.default("./session")
+		.transform(resolveFromRoot)
+		.describe("Baileys WhatsApp session directory"),
 	logLevel: z.enum(["debug", "info", "warn", "error"]).default("info"),
 	maxTendersPerRun: z.coerce.number().int().min(1).max(2000).default(200),
 });
@@ -50,6 +62,7 @@ export function loadConfig(): Config {
 		cronMorning: process.env.CRON_MORNING,
 		cronAfternoon: process.env.CRON_AFTERNOON,
 		dbPath: process.env.DB_PATH,
+		sessionPath: process.env.SESSION_PATH,
 		logLevel: process.env.LOG_LEVEL,
 		maxTendersPerRun: process.env.MAX_TENDERS_PER_RUN,
 	});

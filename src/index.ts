@@ -29,7 +29,11 @@ async function main(): Promise<void> {
 	if (useNoOp) {
 		whatsapp = await createNoOpClient(config.whatsappToPhones, logger);
 	} else {
-		whatsapp = await createBaileysClient(config.whatsappToPhones, logger);
+		whatsapp = await createBaileysClient(
+			config.whatsappToPhones,
+			logger,
+			config.sessionPath,
+		);
 	}
 	await whatsapp.connect();
 
