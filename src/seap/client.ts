@@ -86,7 +86,7 @@ export function mapTender(raw: SeapRawNotice, tier: SeapTender['tier']): SeapTen
     county: '', // populated via client-side filter when county info is available
     cpvCode: cpv.code,
     cpvLabel: cpv.label || undefined,
-    valueRon: raw.estimatedValueRon ?? undefined,
+    valueRon: raw.ronContractValue ?? undefined,
     publicationDate: raw.noticeStateDate,
     state: raw.sysNoticeState?.text ?? '',
     url: raw.caNoticeId
@@ -123,6 +123,45 @@ export function mapDirectAcquisition(raw: SeapRawDirectAcquisition): SeapTender 
 /*  HTTP helpers with retry                                            */
 /* ------------------------------------------------------------------ */
 
+/** HTTP error that preserves status and a parsed Retry-After (ms), so
+ * fetchWithRetry can back off according to what the server actually asked
+ * for on a 429 instead of blindly using exponential backoff. */
+class SeapHttpError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly retryAfterMs?: number,
+  ) {
+    super(message);
+    this.name = 'SeapHttpError';
+  }
+}
+
+/** Parse a Retry-After header, which per spec is either a delay in whole
+ * seconds or an HTTP-date. Returns undefined if absent or unparseable. */
+function parseRetryAfterMs(header: string | null): number | undefined {
+  if (!header) return undefined;
+  const seconds = Number(header);
+  if (!Number.isNaN(seconds)) return seconds * 1000;
+  const dateMs = new Date(header).getTime();
+  if (!Number.isNaN(dateMs)) return Math.max(0, dateMs - Date.now());
+  return undefined;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Small delay used to pace sequential requests to the same host (pagination
+ * pages, per-tender confirmation lookups) so a run with many matches doesn't
+ * fire a burst of back-to-back calls. Jittered to avoid a thundering-herd
+ * pattern if multiple instances ever ran concurrently. */
+const REQUEST_DELAY_MS = 300;
+
+export function requestDelay(): Promise<void> {
+  return sleep(REQUEST_DELAY_MS + Math.random() * REQUEST_DELAY_MS * 0.5);
+}
+
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...options,
@@ -130,11 +169,22 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   });
 
   if (!res.ok) {
-    throw new Error(`SEAP HTTP ${res.status} ${res.statusText} for ${url}`);
+    const retryAfterMs =
+      res.status === 429 ? parseRetryAfterMs(res.headers.get('retry-after')) : undefined;
+    throw new SeapHttpError(
+      `SEAP HTTP ${res.status} ${res.statusText} for ${url}`,
+      res.status,
+      retryAfterMs,
+    );
   }
 
   return res.json() as Promise<T>;
 }
+
+/** Cap how long a single retry wait can be, even if a Retry-After header asks
+ * for longer — a misbehaving/compromised server shouldn't be able to stall a
+ * run indefinitely. */
+const MAX_RETRY_DELAY_MS = 30_000;
 
 async function fetchWithRetry<T>(
   fn: () => Promise<T>,
@@ -149,8 +199,13 @@ async function fetchWithRetry<T>(
     } catch (err) {
       lastError = err as Error;
       if (attempt < maxRetries) {
-        const delay = baseDelayMs * 2 ** attempt;
-        await new Promise((r) => setTimeout(r, delay));
+        const exponentialDelay = baseDelayMs * 2 ** attempt;
+        const retryAfterMs = err instanceof SeapHttpError ? err.retryAfterMs : undefined;
+        const delay = Math.min(
+          retryAfterMs !== undefined ? Math.max(retryAfterMs, exponentialDelay) : exponentialDelay,
+          MAX_RETRY_DELAY_MS,
+        );
+        await sleep(delay);
       }
     }
   }
@@ -228,6 +283,8 @@ export async function searchAboveThresholdTenders(
   const pageSize = 50;
 
   for (let page = 0; allItems.length < maxResults; page++) {
+    if (page > 0) await requestDelay();
+
     const body: GetCANoticeListBody = {
       sysNoticeTypeIds: [],
       sortProperties: [],
@@ -309,6 +366,8 @@ export async function searchSubThresholdTenders(
   const pageSize = 50;
 
   for (let page = 0; allItems.length < maxResults; page++) {
+    if (page > 0) await requestDelay();
+
     const body: GetDirectAcquisitionListBody = {
       pageSize,
       showOngoingDa: false,

@@ -17,6 +17,7 @@ import {
 	confirmCaNoticeCounty,
 	confirmDaCounty,
 	checkNearThreshold,
+	requestDelay,
 } from "./client.js";
 import { upsertTenders, getNewTenders, logRun } from "../db/operations.js";
 
@@ -109,9 +110,13 @@ export async function fetchBrasovTenders(
 			const tender = mapTender(raw, "above_threshold");
 			if (!isBrasovTender(tender)) continue;
 
-			const confirmed = matchesTrustedBrasovKeyword(tender)
-				? true
-				: await confirmCaNoticeCounty(raw.caNoticeId, config.seapCounty);
+			let confirmed: boolean | null;
+			if (matchesTrustedBrasovKeyword(tender)) {
+				confirmed = true;
+			} else {
+				await requestDelay();
+				confirmed = await confirmCaNoticeCounty(raw.caNoticeId, config.seapCounty);
+			}
 			if (confirmed !== false) {
 				tender.county = config.seapCounty;
 				allTenders.push(tender);
@@ -122,15 +127,20 @@ export async function fetchBrasovTenders(
 			const tender = mapDirectAcquisition(raw);
 			if (!isBrasovTender(tender)) continue;
 
-			const confirmed = matchesTrustedBrasovKeyword(tender)
-				? true
-				: await confirmDaCounty(raw.directAcquisitionId, config.seapCounty);
+			let confirmed: boolean | null;
+			if (matchesTrustedBrasovKeyword(tender)) {
+				confirmed = true;
+			} else {
+				await requestDelay();
+				confirmed = await confirmDaCounty(raw.directAcquisitionId, config.seapCounty);
+			}
 			if (confirmed !== false) {
 				tender.county = config.seapCounty;
 				// Contract-splitting red flag: value suspiciously close to the
 				// direct-acquisition threshold. Cheap in the common case —
 				// only fetches DA detail when the value is already in a
 				// candidate window (see checkNearThreshold).
+				await requestDelay();
 				tender.nearThreshold = await checkNearThreshold(
 					raw.directAcquisitionId,
 					tender.valueRon,

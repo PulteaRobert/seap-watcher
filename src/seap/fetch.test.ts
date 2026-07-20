@@ -41,6 +41,7 @@ vi.mock("./client.js", () => ({
 		mockConfirmCaNoticeCounty(...args),
 	confirmDaCounty: (...args: unknown[]) => mockConfirmDaCounty(...args),
 	checkNearThreshold: (...args: unknown[]) => mockCheckNearThreshold(...args),
+	requestDelay: () => Promise.resolve(),
 }));
 
 vi.mock("../db/operations.js", () => ({
@@ -101,7 +102,7 @@ const fixtureRawNotice = {
 	sysProcedureType: { id: 20, text: "Procedura simplificata" },
 	sysContractAssigmentType: { id: 1, text: "Contract" },
 	cpvCodeAndName: "72910000-2 - Servicii IT",
-	estimatedValueRon: 220254.3,
+	ronContractValue: 220254.3,
 	isOnline: true,
 	hasLots: false,
 	noticeStateDate: "2026-05-19T08:14:27+03:00",

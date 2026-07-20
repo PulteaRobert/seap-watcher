@@ -84,7 +84,9 @@ export interface SeapRawNotice {
 	sysProcedureType: { id: number; text: string };
 	sysContractAssigmentType: { id: number; text: string };
 	cpvCodeAndName: string;
-	estimatedValueRon: number;
+	/** Contract value in RON. Despite the name, GetCANoticeList never returns
+	 * an `estimatedValueRon` field — this is the real one. */
+	ronContractValue: number;
 	isOnline: boolean;
 	hasLots: boolean;
 	noticeStateDate: string;
