@@ -67,6 +67,27 @@ hours — a ~6h margin over the 24h gap between daily runs — so nothing is mis
 clock drift or a delayed run. Real "new" filtering still happens via the `alerted`
 flag, not the window.
 
+**Pagination walks to the real end of the result set, not just one page.**
+`searchAboveThresholdTenders`/`searchSubThresholdTenders` (`client.ts`) fetch in
+`chunkSize`-item chunks (the caller passes `config.maxTendersPerRun`, default 200)
+but keep paginating past each chunk — pausing 50-120s (`chunkDelay`) between
+chunks — until SEAP itself returns a short/empty page, up to a hard
+`MAX_PAGES_PER_SEARCH` safety cap. This matters most for the DA (sub-threshold)
+endpoint: its `finalizationDateStart/End` params filter by when a DA closes, not
+when it was published, and results come back **unsorted** (verified empirically —
+an unfiltered fetch returns items spanning months, out of publication order, and
+the server hard-caps `total`/results at 2000 regardless of filters). So the real
+publication-window filter for DA tenders happens client-side inside
+`searchSubThresholdTenders` (`raw.publicationDate` compared against `dateFrom`/
+`dateTo`), and only walking every page gives that filter a real chance of finding
+everything in-window — truncating at one page's worth (as the old implementation
+did) silently dropped genuine matches. The above-threshold (CAN) endpoint, by
+contrast, is properly sorted newest-first and honors its date filter server-side,
+so exhausting its pages mostly just means fewer, faster chunks. Because of the
+per-chunk waits, a full daily run can now take on the order of 10-20 minutes
+(dominated by the DA tier, which can walk the whole ~2000-item cap) rather than a
+few seconds — this is intentional pacing, not a hang.
+
 **Config is the single source of env truth.** `src/config.ts` defines a Zod schema
 and is the only place that reads `process.env` for app settings (`loadConfig()`).
 Add new env vars there, not by reading `process.env` elsewhere.

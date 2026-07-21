@@ -162,6 +162,27 @@ export function requestDelay(): Promise<void> {
   return sleep(REQUEST_DELAY_MS + Math.random() * REQUEST_DELAY_MS * 0.5);
 }
 
+/** Longer pause between successive paginated *chunks* (as opposed to the
+ * fine-grained requestDelay between individual pages within a chunk) — a
+ * daily scan can walk through dozens of pages to reach the real end of the
+ * result set, so this keeps that from reading as a scripted burst.
+ * Randomized between 50s and 120s. */
+const CHUNK_DELAY_MIN_MS = 50_000;
+const CHUNK_DELAY_MAX_MS = 120_000;
+
+export function chunkDelay(): Promise<void> {
+  return sleep(
+    CHUNK_DELAY_MIN_MS + Math.random() * (CHUNK_DELAY_MAX_MS - CHUNK_DELAY_MIN_MS),
+  );
+}
+
+/** Hard safety cap on raw pages fetched per search call, in case the API
+ * ever fails to signal a short/empty final page — without this a pagination
+ * bug on SEAP's end would turn into an infinite loop. Comfortably above any
+ * legitimate result-set size we've observed (SEAP's own DA endpoint caps
+ * itself at 2000 items / 40 pages). */
+const MAX_PAGES_PER_SEARCH = 200;
+
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...options,
@@ -268,62 +289,79 @@ interface GetCANoticeListBody {
 
 /**
  * Search above-threshold tenders via SEAP's GetCANoticeList endpoint.
- * Returns all pages up to `maxResults`. Unlike GetCNoticeList (which ignores
- * sort/filter params and always returns a frozen 2019 snapshot), this endpoint
- * honours startPublicationDate/endPublicationDate server-side.
+ * Unlike GetCNoticeList (which ignores sort/filter params and always
+ * returns a frozen 2019 snapshot), this endpoint honours
+ * startPublicationDate/endPublicationDate server-side, and returns results
+ * newest-first — verified empirically against the live API.
+ *
+ * Paginates in `chunkSize`-item chunks, pausing (chunkDelay) between chunks,
+ * until the real end of the result set is reached (a page shorter than the
+ * page size) rather than stopping at the first chunk — so a single call
+ * walks the whole window instead of only ever seeing the first page's worth.
  */
 export async function searchAboveThresholdTenders(
-  maxResults: number,
+  chunkSize: number,
   dateFrom?: string,
   dateTo?: string,
 ): Promise<SeapNoticeResponse> {
   const allItems: SeapRawNotice[] = [];
   let searchTooLong = false;
   let totalMatches = 0;
+  let totalKnown = false;
   const pageSize = 50;
+  let pageIndex = 0;
 
-  for (let page = 0; allItems.length < maxResults; page++) {
-    if (page > 0) await requestDelay();
+  outer: while (pageIndex < MAX_PAGES_PER_SEARCH) {
+    let chunkCount = 0;
 
-    const body: GetCANoticeListBody = {
-      sysNoticeTypeIds: [],
-      sortProperties: [],
-      pageSize,
-      sysNoticeStateId: null,
-      contractingAuthorityId: null,
-      winnerId: null,
-      cPVCategoryId: null,
-      sysContractAssigmentTypeId: null,
-      cPVId: null,
-      assignedUserId: null,
-      sysAcquisitionContractTypeId: null,
-      pageIndex: page,
-      startPublicationDate: dateFrom ?? null,
-      endPublicationDate: dateTo ?? null,
-    };
+    while (chunkCount < chunkSize) {
+      if (pageIndex > 0) await requestDelay();
 
-    const response = await fetchWithRetry<SeapNoticeResponse>(() =>
-      fetchJson<SeapNoticeResponse>(
-        `${BASE}/api-pub/NoticeCommon/GetCANoticeList/`,
-        {
-          method: 'POST',
-          body: JSON.stringify(body),
-        },
-      ),
-    );
+      const body: GetCANoticeListBody = {
+        sysNoticeTypeIds: [],
+        sortProperties: [],
+        pageSize,
+        sysNoticeStateId: null,
+        contractingAuthorityId: null,
+        winnerId: null,
+        cPVCategoryId: null,
+        sysContractAssigmentTypeId: null,
+        cPVId: null,
+        assignedUserId: null,
+        sysAcquisitionContractTypeId: null,
+        pageIndex,
+        startPublicationDate: dateFrom ?? null,
+        endPublicationDate: dateTo ?? null,
+      };
 
-    const batch = response.items ?? [];
-    if (batch.length === 0) break;
+      const response = await fetchWithRetry<SeapNoticeResponse>(() =>
+        fetchJson<SeapNoticeResponse>(
+          `${BASE}/api-pub/NoticeCommon/GetCANoticeList/`,
+          {
+            method: 'POST',
+            body: JSON.stringify(body),
+          },
+        ),
+      );
 
-    searchTooLong = searchTooLong || response.searchTooLong;
-    if (page === 0) totalMatches = response.total ?? batch.length;
+      const batch = response.items ?? [];
+      searchTooLong = searchTooLong || response.searchTooLong;
+      if (!totalKnown) {
+        totalMatches = response.total ?? batch.length;
+        totalKnown = true;
+      }
+      pageIndex++;
 
-    for (const raw of batch) {
-      allItems.push(raw);
-      if (allItems.length >= maxResults) break;
+      if (batch.length === 0) break outer;
+      allItems.push(...batch);
+      chunkCount += batch.length;
+
+      if (batch.length < pageSize || pageIndex >= MAX_PAGES_PER_SEARCH) break outer;
     }
 
-    if (batch.length < pageSize) break;
+    // A full chunk came back and more may remain — pace the next chunk well
+    // back from the per-page delay before continuing.
+    await chunkDelay();
   }
 
   return { items: allItems, searchTooLong, total: totalMatches };
@@ -353,59 +391,86 @@ interface GetDirectAcquisitionListBody {
  * Search sub-threshold tenders (achizitii directe) via SEAP's
  * DirectAcquisitionCommon/GetDirectAcquisitionList endpoint. Date filtering
  * here is by finalizationDate (when the acquisition closed), not
- * publicationDate — publicationDateStart/End have no effect on this endpoint.
+ * publicationDate — publicationDateStart/End have no effect on this
+ * endpoint, and results are NOT sorted by publicationDate either (verified
+ * empirically: fetching without any cap returns items spanning months,
+ * out of order, and the server caps `total`/results at 2000 regardless of
+ * filters). So `dateFrom`/`dateTo` here only shape the request the server
+ * sees; the real publication-window filtering happens client-side below.
+ *
+ * Paginates in `chunkSize`-item chunks, pausing (chunkDelay) between chunks,
+ * continuing until the true end of the (capped) result set is reached —
+ * needed for the client-side date filter to have a chance of finding
+ * everything in-window, since the matching items aren't concentrated in the
+ * first page.
  */
 export async function searchSubThresholdTenders(
-  maxResults: number,
+  chunkSize: number,
   dateFrom?: string,
   dateTo?: string,
 ): Promise<SeapDaListResponse> {
   const allItems: SeapRawDirectAcquisition[] = [];
   let searchTooLong = false;
   let totalMatches = 0;
+  let totalKnown = false;
   const pageSize = 50;
+  let pageIndex = 0;
 
-  for (let page = 0; allItems.length < maxResults; page++) {
-    if (page > 0) await requestDelay();
+  outer: while (pageIndex < MAX_PAGES_PER_SEARCH) {
+    let chunkCount = 0;
 
-    const body: GetDirectAcquisitionListBody = {
-      pageSize,
-      showOngoingDa: false,
-      cookieContext: null,
-      pageIndex: page,
-      sysDirectAcquisitionStateId: null,
-      publicationDateStart: null,
-      publicationDateEnd: null,
-      finalizationDateStart: dateFrom ?? null,
-      finalizationDateEnd: dateTo ?? null,
-      cpvCategoryId: null,
-      contractingAuthorityId: null,
-      supplierId: null,
-      cpvCodeId: null,
-    };
+    while (chunkCount < chunkSize) {
+      if (pageIndex > 0) await requestDelay();
 
-    const response = await fetchWithRetry<SeapDaListResponse>(() =>
-      fetchJson<SeapDaListResponse>(
-        `${BASE}/api-pub/DirectAcquisitionCommon/GetDirectAcquisitionList/`,
-        {
-          method: 'POST',
-          body: JSON.stringify(body),
-        },
-      ),
-    );
+      const body: GetDirectAcquisitionListBody = {
+        pageSize,
+        showOngoingDa: false,
+        cookieContext: null,
+        pageIndex,
+        sysDirectAcquisitionStateId: null,
+        publicationDateStart: null,
+        publicationDateEnd: null,
+        finalizationDateStart: dateFrom ?? null,
+        finalizationDateEnd: dateTo ?? null,
+        cpvCategoryId: null,
+        contractingAuthorityId: null,
+        supplierId: null,
+        cpvCodeId: null,
+      };
 
-    const batch = response.items ?? [];
-    if (batch.length === 0) break;
+      const response = await fetchWithRetry<SeapDaListResponse>(() =>
+        fetchJson<SeapDaListResponse>(
+          `${BASE}/api-pub/DirectAcquisitionCommon/GetDirectAcquisitionList/`,
+          {
+            method: 'POST',
+            body: JSON.stringify(body),
+          },
+        ),
+      );
 
-    searchTooLong = searchTooLong || response.searchTooLong;
-    if (page === 0) totalMatches = response.total ?? batch.length;
+      const batch = response.items ?? [];
+      searchTooLong = searchTooLong || response.searchTooLong;
+      if (!totalKnown) {
+        totalMatches = response.total ?? batch.length;
+        totalKnown = true;
+      }
+      pageIndex++;
 
-    for (const raw of batch) {
-      allItems.push(raw);
-      if (allItems.length >= maxResults) break;
+      if (batch.length === 0) break outer;
+      chunkCount += batch.length;
+
+      for (const raw of batch) {
+        if (dateFrom && raw.publicationDate < dateFrom) continue;
+        if (dateTo && raw.publicationDate > dateTo) continue;
+        allItems.push(raw);
+      }
+
+      if (batch.length < pageSize || pageIndex >= MAX_PAGES_PER_SEARCH) break outer;
     }
 
-    if (batch.length < pageSize) break;
+    // A full page came back and more may remain — pace the next chunk well
+    // back from the per-page delay before continuing.
+    await chunkDelay();
   }
 
   return { items: allItems, searchTooLong, total: totalMatches };
