@@ -7,12 +7,12 @@ Step-by-step guide to deploying the SEAP Watcher on a fresh Ubuntu/Debian VPS.
 - **OS**: Ubuntu 22.04+ or Debian 12+ (anything with systemd)
 - **RAM**: 512 MB minimum (1 GB recommended)
 - **Disk**: 10 GB minimum (SQLite + Node.js deps ~200 MB)
-- **Node.js**: 24+ (installed via NodeSource or nvm)
+- **Node.js**: 26+ (installed via NodeSource or nvm)
 - **Network**: Outbound HTTPS (port 443) to `e-licitatie.ro` and WhatsApp servers
 
 ## Quick Deploy (One Command)
 
-If you already have Node.js 24+ installed:
+If you already have Node.js 26+ installed:
 
 ```bash
 sudo bash deploy/setup.sh
@@ -27,13 +27,13 @@ This creates a system user, installs the app to `/opt/seap-watcher`, builds it, 
 ### 1. Install Node.js
 
 ```bash
-# Using NodeSource (Node.js 24 LTS)
-curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+# Using NodeSource (Node.js 26 — current release, not LTS; use setup_24.x for the LTS line instead)
+curl -fsSL https://deb.nodesource.com/setup_26.x | sudo -E bash -
 sudo apt-get install -y nodejs
 
 # Verify
-node -v   # v24.x.x
-npm -v    # 10.x.x
+node -v   # v26.x.x
+npm -v    # 11.x.x
 ```
 
 ### 2. Clone the Repository
