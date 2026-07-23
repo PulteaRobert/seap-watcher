@@ -20,8 +20,12 @@ import { createBaileysClient } from "../dist/whatsapp/client.js";
 const config = loadConfig();
 const logger = createLogger(config.logLevel);
 
+// Only the first configured recipient — avoids poking the second number's
+// session while it's mid-repair.
+const [firstPhone] = config.whatsappToPhones;
+
 const client = await createBaileysClient(
-	config.whatsappToPhones,
+	[firstPhone],
 	logger,
 	config.sessionPath,
 );
@@ -35,8 +39,8 @@ const message = `seap-watcher test message — ${new Date().toISOString()}`;
 const ok = await client.sendMessage(message);
 
 logger.info(
-	{ ok, recipients: config.whatsappToPhones },
-	"Test send complete — check each phone individually",
+	{ ok, recipient: firstPhone },
+	"Test send complete — check the phone individually",
 );
 
 await client.close();

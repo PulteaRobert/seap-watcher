@@ -106,10 +106,10 @@ npm run run-once             # local dev
 sudo -u seap NODE_ENV=production /usr/bin/node /opt/seap-watcher/dist/index.js --run-once   # on the VPS
 #   sudo systemctl start seap-watcher
 
-# Send a one-off WhatsApp test message to every configured recipient,
-# regardless of whether there are new tenders — useful for verifying
-# delivery after changing WHATSAPP_TO_PHONE. Same session-conflict
-# caveat as run-once: stop the service first.
+# Send a one-off WhatsApp test message to only the first configured
+# recipient, regardless of whether there are new tenders — useful for
+# verifying delivery without also poking the second number's session.
+# Same session-conflict caveat as run-once: stop the service first.
 sudo -u seap NODE_ENV=production node scripts/test-send.js
 
 # View database

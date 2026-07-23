@@ -14,10 +14,63 @@ import {
 	type BaileysEventMap,
 } from "baileys";
 import qrcodeTerminal from "qrcode-terminal";
-import { readdirSync, existsSync, mkdirSync } from "node:fs";
+import {
+	readdirSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	writeFileSync,
+	unlinkSync,
+} from "node:fs";
 import { join } from "node:path";
 import type { Logger } from "pino";
 import type { WhatsAppClient } from "./types.js";
+
+/**
+ * Two processes opening the same Baileys auth session concurrently (e.g. the
+ * systemd service plus a manually-run --run-once or test-send.js) race on
+ * writing session files and can desync the Signal ratchet state, producing
+ * unrecoverable "MessageCounterError: Key used already or never filled"
+ * decrypt failures. This lock makes that a loud, immediate error instead of
+ * silent corruption.
+ */
+function acquireSessionLock(sessionPath: string): string {
+	const lockPath = join(sessionPath, ".session.lock");
+
+	if (existsSync(lockPath)) {
+		const heldBy = Number(readFileSync(lockPath, "utf8").trim());
+		const stillRunning = Number.isInteger(heldBy) && isPidAlive(heldBy);
+
+		if (stillRunning) {
+			throw new Error(
+				`WhatsApp session at "${sessionPath}" is already in use by pid ${heldBy}. ` +
+					"Stop that process first (e.g. `sudo systemctl stop seap-watcher`) " +
+					"before starting another connection against the same session.",
+			);
+		}
+		// Stale lock left behind by a crashed process — safe to reclaim.
+	}
+
+	writeFileSync(lockPath, String(process.pid));
+	return lockPath;
+}
+
+function isPidAlive(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function releaseSessionLock(lockPath: string): void {
+	try {
+		unlinkSync(lockPath);
+	} catch {
+		// already gone — nothing to do
+	}
+}
 
 /* ------------------------------------------------------------------ */
 /*  Baileys socket type alias                                         */
@@ -53,6 +106,7 @@ export class BaileysWhatsAppClient implements WhatsAppClient {
 	private _connected = false;
 	private _reconnectAttempts = 0;
 	private _closing = false;
+	private _lockPath: string | null = null;
 
 	constructor(
 		private _toPhones: string[],
@@ -72,6 +126,11 @@ export class BaileysWhatsAppClient implements WhatsAppClient {
 		// Ensure session directory exists
 		if (!existsSync(this._sessionPath)) {
 			mkdirSync(this._sessionPath, { recursive: true });
+		}
+
+		// Only acquire once per process — connect() re-enters itself on reconnect.
+		if (!this._lockPath) {
+			this._lockPath = acquireSessionLock(this._sessionPath);
 		}
 
 		const { state, saveCreds } = await useMultiFileAuthState(this._sessionPath);
@@ -158,6 +217,17 @@ export class BaileysWhatsAppClient implements WhatsAppClient {
 		);
 	}
 
+	/* ---- connection readiness --------------------------------------- */
+
+	async waitUntilConnected(timeoutMs: number = 30_000): Promise<boolean> {
+		const start = Date.now();
+		while (!this._connected) {
+			if (Date.now() - start > timeoutMs) return false;
+			await sleep(250);
+		}
+		return true;
+	}
+
 	/* ---- messaging -------------------------------------------------- */
 
 	async sendMessage(text: string): Promise<boolean> {
@@ -203,6 +273,12 @@ export class BaileysWhatsAppClient implements WhatsAppClient {
 		}
 
 		this._connected = false;
+
+		if (this._lockPath) {
+			releaseSessionLock(this._lockPath);
+			this._lockPath = null;
+		}
+
 		this._logger.info("WhatsApp client closed");
 	}
 

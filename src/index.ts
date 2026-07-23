@@ -25,6 +25,8 @@ async function main(): Promise<void> {
 	//    Use NO_OP_WHATSAPP=1 for development without a live Baileys connection
 	const useNoOp = process.env.NO_OP_WHATSAPP === "1";
 
+	// WhatsApp only connects on demand, right before an alert is actually
+	// sent (see runCheck) — no need to hold a connection open here.
 	let whatsapp;
 	if (useNoOp) {
 		whatsapp = await createNoOpClient(config.whatsappToPhones, logger);
@@ -35,7 +37,6 @@ async function main(): Promise<void> {
 			config.sessionPath,
 		);
 	}
-	await whatsapp.connect();
 
 	// 4. Check for --run-once flag (instant manual run)
 	const runOnce = process.argv.includes("--run-once");
@@ -43,7 +44,6 @@ async function main(): Promise<void> {
 		logger.info("Manual run triggered (--run-once)");
 		await runCheck("manual", config, db, whatsapp, logger);
 		logger.info("Manual run complete — exiting");
-		await whatsapp.close();
 		closeDatabase(db);
 		process.exit(0);
 	}

@@ -23,6 +23,10 @@ export class NoOpWhatsAppClient implements WhatsAppClient {
 		);
 	}
 
+	async waitUntilConnected(): Promise<boolean> {
+		return this._connected;
+	}
+
 	async sendMessage(text: string): Promise<boolean> {
 		if (!this._connected) {
 			this._logger.error("[NoOpWhatsApp] Not connected — message dropped");

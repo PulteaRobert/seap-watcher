@@ -51,9 +51,23 @@ export async function runCheck(
 			return;
 		}
 
-		// 2. Format and send WhatsApp message (with retry)
+		// 2. Only connect to WhatsApp now, right before sending — after a
+		//    potentially 10-20 minute SEAP fetch, this keeps the session
+		//    open for seconds instead of the whole run, so the connection
+		//    used to send is always fresh.
 		const message = formatWhatsAppMessage(newTenders, slot);
-		const sent = await sendWithRetry(whatsapp, message);
+		let sent = false;
+		try {
+			await whatsapp.connect();
+			const ready = await whatsapp.waitUntilConnected(30_000);
+			if (!ready) {
+				logger.error(`${tag} WhatsApp did not connect in time — alert NOT sent`);
+			} else {
+				sent = await sendWithRetry(whatsapp, message);
+			}
+		} finally {
+			await whatsapp.close();
+		}
 
 		if (sent) {
 			// 3. Mark tenders as alerted in DB

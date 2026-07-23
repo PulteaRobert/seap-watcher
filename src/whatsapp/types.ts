@@ -12,6 +12,14 @@ export interface WhatsAppClient {
 	/** Connect (or reconnect) to WhatsApp Web. */
 	connect(): Promise<void>;
 
+	/**
+	 * Wait until the connection actually reaches the "open" state (or the
+	 * timeout elapses). `connect()` returns as soon as the socket is set up,
+	 * not once it's usable — callers that need to send right away should
+	 * await this first.
+	 */
+	waitUntilConnected(timeoutMs?: number): Promise<boolean>;
+
 	/** Send a text message to the configured recipient. */
 	sendMessage(text: string): Promise<boolean>;
 

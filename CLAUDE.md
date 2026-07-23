@@ -37,7 +37,16 @@ uses `src/whatsapp/noop.ts`, which logs messages instead of sending them.
 **Pipeline entry point:** `src/scheduler.ts` `runCheck()` is the single orchestration
 function used by both the cron scheduler and `--run-once`. It calls, in order:
 `fetchBrasovTenders` (fetch+store+return-new) → `formatWhatsAppMessage` →
-`sendWithRetry` → `markAsAlerted`.
+`sendWithRetry` → `markAsAlerted`. WhatsApp is only connected once there are
+tenders to alert on — `runCheck` calls `whatsapp.connect()` right before
+`sendWithRetry` (after `waitUntilConnected` confirms the socket is actually
+open, not just constructed) and `whatsapp.close()` in a `finally` right after,
+rather than holding a connection open for the whole run (which, for the DA
+tier, can take 10-20 minutes) or for the process's entire lifetime. This keeps
+each send on a short-lived, freshly-opened session and was a deliberate fix
+after a long-held connection's Signal session desynced
+(`MessageCounterError: Key used already or never filled`, unrecoverable by
+retrying — the ratchet state itself needs a fresh session, not just a retry).
 
 **Deduplication is DB-state-based, not diff-based.** `src/dedup/engine.ts`
 (`computeDiff`/`alertableTenders`) exists but is **not wired into the pipeline** —
@@ -93,11 +102,16 @@ and is the only place that reads `process.env` for app settings (`loadConfig()`)
 Add new env vars there, not by reading `process.env` elsewhere.
 
 **WhatsApp client is behind an interface.** `src/whatsapp/types.ts` defines
-`WhatsAppClient` (`connect`, `sendMessage`, `isConnected`, `close`); both
-`client.ts` (real Baileys) and `noop.ts` (dev) implement it, and `scheduler.ts` /
-`index.ts` depend only on the interface. `send.ts`'s `sendWithRetry` wraps
-`sendMessage` with backoff and is what the pipeline actually calls — tenders are
-only marked `alerted` if this returns `true`.
+`WhatsAppClient` (`connect`, `waitUntilConnected`, `sendMessage`, `isConnected`,
+`close`); both `client.ts` (real Baileys) and `noop.ts` (dev) implement it, and
+`scheduler.ts` / `index.ts` depend only on the interface. `send.ts`'s
+`sendWithRetry` wraps `sendMessage` with backoff and is what the pipeline
+actually calls — tenders are only marked `alerted` if this returns `true`.
+`client.ts` also holds a PID lockfile (`session/.session.lock`) for the
+duration of a connection, so a second process (e.g. `scripts/test-send.js` or
+a manual `--run-once`) can't open the same Baileys session concurrently —
+concurrent connections racing on the same session files is what caused the
+Signal-session corruption mentioned above.
 
 **Module layout:** `src/config.ts` (env/config), `src/seap/` (external API +
 mapping), `src/db/` (SQLite schema in `database.ts`, CRUD in `operations.ts`),

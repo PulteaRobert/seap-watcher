@@ -30,6 +30,7 @@ function createMockClient(): MockWhatsAppClient {
 			state.shouldFail = v;
 		},
 		connect: vi.fn().mockResolvedValue(undefined),
+		waitUntilConnected: vi.fn().mockResolvedValue(true),
 		sendMessage: vi.fn().mockImplementation(async () => {
 			state.callCount++;
 			if (state.callCount <= state.shouldFail) return false;
