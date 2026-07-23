@@ -241,9 +241,23 @@ export class BaileysWhatsAppClient implements WhatsAppClient {
 		let anySent = false;
 		for (const toPhone of this._toPhones) {
 			try {
-				const jid = `${toPhone}@s.whatsapp.net`;
-				await this._sock.sendMessage(jid, { text });
-				this._logger.info({ to: toPhone }, "WhatsApp message sent");
+				// Resolve the actual registered JID via WhatsApp's own lookup
+				// rather than assuming `${toPhone}@s.whatsapp.net` — this
+				// surfaces "number not on WhatsApp" as a clear log line
+				// instead of a silent no-op delivery (server acks the send
+				// either way, so a naive JID gives no visible signal that
+				// nothing reached the recipient).
+				const [result] = (await this._sock.onWhatsApp(toPhone)) ?? [];
+				if (!result?.exists) {
+					this._logger.error(
+						{ to: toPhone },
+						"Number is not registered on WhatsApp (or lookup failed) — message NOT sent",
+					);
+					continue;
+				}
+
+				await this._sock.sendMessage(result.jid, { text });
+				this._logger.info({ to: toPhone, jid: result.jid }, "WhatsApp message sent");
 				anySent = true;
 			} catch (err) {
 				this._logger.error({ err, to: toPhone }, "Failed to send WhatsApp message");

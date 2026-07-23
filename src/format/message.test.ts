@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-	formatWhatsAppMessage,
+	formatWhatsAppMessages,
 	formatNoNewTendersMessage,
 	formatErrorMessage,
 } from "./message.js";
@@ -20,9 +20,9 @@ const makeTender = (overrides: Partial<SeapTender> = {}): SeapTender => ({
 	...overrides,
 });
 
-describe("formatWhatsAppMessage", () => {
+describe("formatWhatsAppMessages", () => {
 	it("includes header with Brasov and date", () => {
-		const msg = formatWhatsAppMessage([makeTender()], "morning");
+		const [msg] = formatWhatsAppMessages([makeTender()], "morning");
 		expect(msg).toContain("SEAP Alert — Brasov");
 		expect(msg).toContain("dimineața");
 	});
@@ -37,7 +37,7 @@ describe("formatWhatsAppMessage", () => {
 			cpvLabel: "Receptoare",
 			url: "https://e-licitatie.ro/pub/notices/123",
 		});
-		const msg = formatWhatsAppMessage([tender], "morning");
+		const [msg] = formatWhatsAppMessages([tender], "morning");
 
 		expect(msg).toContain("[DA999999]");
 		expect(msg).toContain("Telefoane industriale");
@@ -49,7 +49,7 @@ describe("formatWhatsAppMessage", () => {
 	});
 
 	it('shows "n/a" when value is missing', () => {
-		const msg = formatWhatsAppMessage(
+		const [msg] = formatWhatsAppMessages(
 			[makeTender({ valueRon: undefined })],
 			"morning",
 		);
@@ -58,45 +58,58 @@ describe("formatWhatsAppMessage", () => {
 
 	it("includes deadline when present", () => {
 		const tender = makeTender({ deadline: "2026-07-25T14:00:00Z" });
-		const msg = formatWhatsAppMessage([tender], "afternoon");
+		const [msg] = formatWhatsAppMessages([tender], "afternoon");
 		expect(msg).toContain("Termen:");
 		expect(msg).toContain("2026-07-25");
 	});
 
-	it("truncates at 20 tenders with indicator", () => {
+	it("splits into multiple messages when over 10 tenders, without dropping any", () => {
 		const many = Array.from({ length: 25 }, (_, i) =>
 			makeTender({ sicapId: `DA${String(i).padStart(6, "0")}` }),
 		);
-		const msg = formatWhatsAppMessage(many, "morning");
+		const messages = formatWhatsAppMessages(many, "morning");
 
-		// Should contain truncation indicator
-		expect(msg).toContain("afisate 20");
-		expect(msg).toContain("Total: 25 licitații");
+		// 25 tenders / 10 per message = 3 parts (10 + 10 + 5)
+		expect(messages).toHaveLength(3);
+		expect(messages[0]).toContain("partea 1/3");
+		expect(messages[2]).toContain("partea 3/3");
+
+		// Every tender's sicapId shows up exactly once across all parts
+		for (const t of many) {
+			const occurrences = messages.filter((m) => m.includes(`[${t.sicapId}]`));
+			expect(occurrences).toHaveLength(1);
+		}
+
+		// Each part still reports the grand total, not just its own chunk size
+		for (const m of messages) {
+			expect(m).toContain("Total: 25 licitații");
+		}
 	});
 
-	it("does not truncate for <= 20 tenders", () => {
+	it("does not split or label parts for <= 10 tenders", () => {
 		const tenders = Array.from({ length: 5 }, (_, i) =>
 			makeTender({ sicapId: `DA${String(i).padStart(6, "0")}` }),
 		);
-		const msg = formatWhatsAppMessage(tenders, "afternoon");
+		const messages = formatWhatsAppMessages(tenders, "afternoon");
 
-		expect(msg).not.toContain("afisate");
-		expect(msg).toContain("Total: 5 licitații");
+		expect(messages).toHaveLength(1);
+		expect(messages[0]).not.toContain("partea");
+		expect(messages[0]).toContain("Total: 5 licitații");
 	});
 
 	it('uses "seara" for afternoon slot', () => {
-		const msg = formatWhatsAppMessage([makeTender()], "afternoon");
+		const [msg] = formatWhatsAppMessages([makeTender()], "afternoon");
 		expect(msg).toContain("seara");
 	});
 
 	it("handles empty tender list", () => {
-		const msg = formatWhatsAppMessage([], "morning");
+		const [msg] = formatWhatsAppMessages([], "morning");
 		expect(msg).toContain("Total: 0 licitații noi");
 	});
 
 	it("flags near-threshold tenders with a warning marker", () => {
 		const tender = makeTender({ sicapId: "DA555555", nearThreshold: true });
-		const msg = formatWhatsAppMessage([tender], "morning");
+		const [msg] = formatWhatsAppMessages([tender], "morning");
 
 		expect(msg).toContain("⚠️");
 		expect(msg).toContain("Aproape de pragul de achiziție directă");
@@ -104,7 +117,7 @@ describe("formatWhatsAppMessage", () => {
 
 	it("does not show the near-threshold warning for regular tenders", () => {
 		const tender = makeTender({ sicapId: "DA555555", nearThreshold: false });
-		const msg = formatWhatsAppMessage([tender], "morning");
+		const [msg] = formatWhatsAppMessages([tender], "morning");
 
 		expect(msg).not.toContain("Aproape de pragul");
 	});

@@ -11,8 +11,15 @@ import type { WhatsAppClient } from "./whatsapp/types.js";
 import type { SeapTender, RunSlot } from "./seap/types.js";
 import { fetchBrasovTenders } from "./seap/fetch.js";
 import { markAsAlerted } from "./db/operations.js";
-import { formatWhatsAppMessage } from "./format/message.js";
+import { formatWhatsAppMessages } from "./format/message.js";
 import { sendWithRetry } from "./whatsapp/send.js";
+
+/** Pause between multi-part message sends, so a large batch doesn't look like a burst/spam to WhatsApp. */
+const INTER_MESSAGE_DELAY_MS = 5_000;
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /* ------------------------------------------------------------------ */
 /*  Run check                                                          */
@@ -55,26 +62,41 @@ export async function runCheck(
 		//    potentially 10-20 minute SEAP fetch, this keeps the session
 		//    open for seconds instead of the whole run, so the connection
 		//    used to send is always fresh.
-		const message = formatWhatsAppMessage(newTenders, slot);
-		let sent = false;
+		//    Split across multiple messages (formatWhatsAppMessages) rather
+		//    than one giant message, so a large batch never gets cut off.
+		const messages = formatWhatsAppMessages(newTenders, slot);
+		let allSent = false;
 		try {
 			await whatsapp.connect();
 			const ready = await whatsapp.waitUntilConnected(30_000);
 			if (!ready) {
 				logger.error(`${tag} WhatsApp did not connect in time — alert NOT sent`);
 			} else {
-				sent = await sendWithRetry(whatsapp, message);
+				allSent = true;
+				for (const [i, message] of messages.entries()) {
+					if (i > 0) {
+						await sleep(INTER_MESSAGE_DELAY_MS);
+					}
+					const ok = await sendWithRetry(whatsapp, message);
+					if (!ok) {
+						logger.error(
+							`${tag} Failed to send message ${i + 1}/${messages.length} — aborting remaining parts`,
+						);
+						allSent = false;
+						break;
+					}
+				}
 			}
 		} finally {
 			await whatsapp.close();
 		}
 
-		if (sent) {
+		if (allSent) {
 			// 3. Mark tenders as alerted in DB
 			const sicapIds = newTenders.map((t) => t.sicapId);
 			markAsAlerted(db, sicapIds);
 			logger.info(
-				`${tag} Alerted ${newTenders.length} new tenders via WhatsApp`,
+				`${tag} Alerted ${newTenders.length} new tenders via ${messages.length} WhatsApp message(s)`,
 			);
 		} else {
 			logger.error(

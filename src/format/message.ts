@@ -1,13 +1,14 @@
 /**
- * Formats a list of SEAP tenders into a readable WhatsApp message.
+ * Formats a list of SEAP tenders into readable WhatsApp message(s).
  *
- * Romanian language, emoji indicators, max 20 tenders per message
- * with truncation indicator.
+ * Romanian language, emoji indicators. Batches larger than
+ * MAX_TENDERS_PER_MESSAGE are split across multiple messages instead of
+ * being truncated, so no tender is ever silently dropped from the alert.
  */
 
 import type { SeapTender, RunSlot } from "../seap/types.js";
 
-const MAX_TENDERS_PER_MESSAGE = 20;
+const MAX_TENDERS_PER_MESSAGE = 10;
 
 /** Romanian day names. */
 const ROMANIAN_DAYS = [
@@ -92,42 +93,71 @@ function formatTenderEntry(index: number, t: SeapTender): string {
 	return lines.join("\n");
 }
 
-/**
- * Format the full WhatsApp alert message for a batch of tenders.
- *
- * @param tenders  — list of new (or modified) tenders to alert
- * @param slot     — 'morning' or 'afternoon' cron slot
- */
-export function formatWhatsAppMessage(
-	tenders: SeapTender[],
+/** Build a single message for one chunk of tenders within a (possibly multi-part) batch. */
+function buildMessage(
+	chunk: SeapTender[],
 	slot: RunSlot,
+	startIndex: number,
+	totalCount: number,
+	partIndex: number,
+	totalParts: number,
 ): string {
 	const now = new Date();
 	const dateStr = formatRomanianDate(now);
 	const slotStr = slotLabel(slot);
 
 	const separator = "─".repeat(35);
+	const partSuffix = totalParts > 1 ? ` — partea ${partIndex}/${totalParts}` : "";
 
-	const header = `📋 SEAP Alert — Brasov (${dateStr} — ${slotStr})`;
+	const header = `📋 SEAP Alert — Brasov (${dateStr} — ${slotStr})${partSuffix}`;
 
-	// Truncate if too many tenders
-	const truncated = tenders.length > MAX_TENDERS_PER_MESSAGE;
-	const displayed = truncated
-		? tenders.slice(0, MAX_TENDERS_PER_MESSAGE)
-		: tenders;
-
-	const bodyLines = displayed.map((t, i) => formatTenderEntry(i + 1, t));
+	const bodyLines = chunk.map((t, i) => formatTenderEntry(startIndex + i + 1, t));
 
 	let totalLine: string;
-	if (truncated) {
-		totalLine = `Total: ${tenders.length} licitații noi (afisate ${MAX_TENDERS_PER_MESSAGE}…)`;
-	} else if (tenders.length === 1) {
+	if (totalCount === 1) {
 		totalLine = "Total: 1 licitație noi";
 	} else {
-		totalLine = `Total: ${tenders.length} licitații noi`;
+		totalLine = `Total: ${totalCount} licitații noi`;
+	}
+	if (totalParts > 1) {
+		totalLine += ` (partea ${partIndex}/${totalParts})`;
 	}
 
 	return [header, separator, ...bodyLines, "", totalLine, separator].join("\n");
+}
+
+/**
+ * Format the full WhatsApp alert for a batch of tenders as one message per
+ * chunk of at most MAX_TENDERS_PER_MESSAGE tenders — never truncates, splits
+ * into as many messages as needed instead.
+ *
+ * @param tenders  — list of new (or modified) tenders to alert
+ * @param slot     — 'morning' or 'afternoon' cron slot
+ */
+export function formatWhatsAppMessages(
+	tenders: SeapTender[],
+	slot: RunSlot,
+): string[] {
+	if (tenders.length === 0) {
+		return [buildMessage([], slot, 0, 0, 1, 1)];
+	}
+
+	const chunks: SeapTender[][] = [];
+	for (let i = 0; i < tenders.length; i += MAX_TENDERS_PER_MESSAGE) {
+		chunks.push(tenders.slice(i, i + MAX_TENDERS_PER_MESSAGE));
+	}
+
+	const totalParts = chunks.length;
+	return chunks.map((chunk, idx) =>
+		buildMessage(
+			chunk,
+			slot,
+			idx * MAX_TENDERS_PER_MESSAGE,
+			tenders.length,
+			idx + 1,
+			totalParts,
+		),
+	);
 }
 
 /**
